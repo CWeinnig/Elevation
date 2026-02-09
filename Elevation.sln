@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Elevation", "Elevation\Elevation.csproj", "{A76A3180-2324-4AF9-810D-842E91A9E4C7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "frontend", "frontend\frontend.csproj", "{260C1927-6433-453E-958E-33522DF87DA6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A76A3180-2324-4AF9-810D-842E91A9E4C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A76A3180-2324-4AF9-810D-842E91A9E4C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A76A3180-2324-4AF9-810D-842E91A9E4C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A76A3180-2324-4AF9-810D-842E91A9E4C7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{260C1927-6433-453E-958E-33522DF87DA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{260C1927-6433-453E-958E-33522DF87DA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{260C1927-6433-453E-958E-33522DF87DA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{260C1927-6433-453E-958E-33522DF87DA6}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

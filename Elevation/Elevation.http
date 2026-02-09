@@ -1,0 +1,6 @@
+@Elevation_HostAddress = http://localhost:5249
+
+GET {{Elevation_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
