@@ -1,6 +1,6 @@
 ﻿namespace Elevation.Models;
 using System.ComponentModel.DataAnnotations;
-
+using System.Text.Json.Serialization;
 
 public class User
 {
@@ -19,6 +19,6 @@ public class User
     public string Role { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    public ICollection<Order> Orders { get; set; }
+    [JsonIgnore]
+    public ICollection<Order>? Orders { get; set; }
 }
