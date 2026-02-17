@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
+using Elevation.DTOs;
 
 namespace Elevation.Controllers;
 
@@ -15,35 +16,70 @@ public class ProductsController : ControllerBase
         _context = context;
     }
 
-    // GET: api/Products
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Product>>> GetProducts()
+    public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts()
     {
-        // Only show active products to customers
         return await _context.Products
             .Include(p => p.Options)
             .Where(p => p.IsActive)
+            .Select(p => new ProductDto
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Description = p.Description,
+                BasePrice = p.BasePrice,
+                Options = p.Options!.Select(o => new ProductOptionDto
+                {
+                    Id = o.Id,
+                    OptionName = o.OptionName,
+                    OptionValue = o.OptionValue,
+                    PriceModifier = o.PriceModifier
+                }).ToList()
+            })
             .ToListAsync();
     }
 
-    // GET: api/Products/5
     [HttpGet("{id}")]
-    public async Task<ActionResult<Product>> GetProduct(int id)
+    public async Task<ActionResult<ProductDto>> GetProduct(int id)
     {
         var product = await _context.Products
             .Include(p => p.Options)
             .FirstOrDefaultAsync(p => p.Id == id);
 
         if (product == null) return NotFound();
-        return product;
+
+        return new ProductDto
+        {
+            Id = product.Id,
+            Name = product.Name,
+            Description = product.Description,
+            BasePrice = product.BasePrice,
+            Options = product.Options!.Select(o => new ProductOptionDto
+            {
+                Id = o.Id,
+                OptionName = o.OptionName,
+                OptionValue = o.OptionValue,
+                PriceModifier = o.PriceModifier
+            }).ToList()
+        };
     }
 
-    // POST: api/Products (Admin only)
     [HttpPost]
-    public async Task<ActionResult<Product>> PostProduct(Product product)
+    public async Task<ActionResult<ProductDto>> PostProduct(CreateProductDto dto)
     {
-        // Ensure options are initialized to prevent null errors
-        if (product.Options == null) product.Options = new List<ProductOption>();
+        var product = new Product
+        {
+            Name = dto.Name,
+            Description = dto.Description,
+            BasePrice = dto.BasePrice,
+            IsActive = true,
+            Options = dto.Options.Select(o => new ProductOption
+            {
+                OptionName = o.OptionName,
+                OptionValue = o.OptionValue,
+                PriceModifier = o.PriceModifier
+            }).ToList()
+        };
 
         _context.Products.Add(product);
         await _context.SaveChangesAsync();
@@ -51,37 +87,42 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
     }
 
-    // PUT: api/Products/5 (Update price/options)
     [HttpPut("{id}")]
-    public async Task<IActionResult> PutProduct(int id, Product product)
+    public async Task<IActionResult> PutProduct(int id, UpdateProductDto dto)
     {
-        if (id != product.Id) return BadRequest();
+        var product = await _context.Products
+            .Include(p => p.Options)
+            .FirstOrDefaultAsync(p => p.Id == id);
 
-        _context.Entry(product).State = EntityState.Modified;
+        if (product == null) return NotFound();
 
-        try
+        product.Name = dto.Name;
+        product.Description = dto.Description;
+        product.BasePrice = dto.BasePrice;
+        product.IsActive = dto.IsActive;
+
+        product.Options!.Clear();
+        foreach (var o in dto.Options)
         {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!_context.Products.Any(e => e.Id == id)) return NotFound();
-            throw;
+            product.Options.Add(new ProductOption
+            {
+                OptionName = o.OptionName,
+                OptionValue = o.OptionValue,
+                PriceModifier = o.PriceModifier
+            });
         }
 
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 
-    // DELETE: api/Products/5 (Soft Delete)
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeactivateProduct(int id)
     {
         var product = await _context.Products.FindAsync(id);
         if (product == null) return NotFound();
 
-       
         product.IsActive = false;
-
         await _context.SaveChangesAsync();
         return NoContent();
     }

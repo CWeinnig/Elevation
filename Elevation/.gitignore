@@ -5,7 +5,7 @@
 *.user
 *.userosscache
 *.sln.docstates
-
+.vs
 ## .NET Specific
 out/
 publish/

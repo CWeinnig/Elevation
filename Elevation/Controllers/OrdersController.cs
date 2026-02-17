@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
+using Elevation.DTOs;
 
 namespace Elevation.Controllers;
 
@@ -15,54 +16,64 @@ public class OrdersController : ControllerBase
         _context = context;
     }
 
-    // POST: api/Orders
     [HttpPost]
-    public async Task<ActionResult<Order>> CreateOrder(Order order)
+    public async Task<ActionResult<OrderDto>> CreateOrder(CreateOrderDto dto)
     {
-        // 1. Validation: Must have a User and a Payment ID from Square
-        if (string.IsNullOrEmpty(order.SquarePaymentId))
+        if (string.IsNullOrEmpty(dto.SquarePaymentId))
             return BadRequest("Payment verification failed: Missing SquarePaymentId.");
 
-        var user = await _context.Users.FindAsync(order.UserId);
+        var user = await _context.Users.FindAsync(dto.UserId);
         if (user == null) return BadRequest("User does not exist.");
 
-        // 2. Server-Side Price Calculation
+        var order = new Order
+        {
+            UserId = dto.UserId,
+            SquarePaymentId = dto.SquarePaymentId,
+            Status = "Paid",
+            CreatedAt = DateTime.UtcNow,
+            Items = new List<OrderItem>(),
+            Notifications = new List<Notification>()
+        };
+
         decimal calculatedTotal = 0;
 
-        // We must initialize these lists if null to avoid crashes
-        if (order.Items == null) order.Items = new List<OrderItem>();
-        if (order.Notifications == null) order.Notifications = new List<Notification>();
-
-        foreach (var item in order.Items)
+        foreach (var itemDto in dto.Items)
         {
-            // Lookup the REAL product price
-            var dbProduct = await _context.Products.FindAsync(item.ProductId);
-            if (dbProduct == null) return BadRequest($"Product ID {item.ProductId} not found.");
+            var dbProduct = await _context.Products.FindAsync(itemDto.ProductId);
+            if (dbProduct == null) return BadRequest($"Product ID {itemDto.ProductId} not found.");
 
-            // Base Cost
             decimal itemCost = dbProduct.BasePrice;
+            var orderOptions = new List<OrderOption>();
 
-            // Add Option Costs (if any)
-            if (item.Options != null)
+            foreach (var optDto in itemDto.Options)
             {
-                foreach (var opt in item.Options)
+                var dbOption = await _context.ProductOptions.FindAsync(optDto.ProductOptionId);
+                if (dbOption == null) return BadRequest($"ProductOption ID {optDto.ProductOptionId} not found.");
+                if (dbOption.ProductId != itemDto.ProductId) return BadRequest($"ProductOption {optDto.ProductOptionId} does not belong to Product {itemDto.ProductId}.");
+
+                itemCost += dbOption.PriceModifier;
+
+                orderOptions.Add(new OrderOption
                 {
-                    // For safety, we trust the modifier sent, but in a strict app 
-                    // you would lookup the ProductOption table here too.
-                    itemCost += opt.PriceModifier;
-                }
+                    OptionName = dbOption.OptionName,
+                    OptionValue = dbOption.OptionValue,
+                    PriceModifier = dbOption.PriceModifier
+                });
             }
 
-            // Set the final snapshot price for this item
-            item.UnitPrice = itemCost;
-            calculatedTotal += (itemCost * item.Quantity);
+            calculatedTotal += itemCost * itemDto.Quantity;
+
+            order.Items.Add(new OrderItem
+            {
+                ProductId = itemDto.ProductId,
+                Quantity = itemDto.Quantity,
+                UnitPrice = itemCost,
+                Options = orderOptions
+            });
         }
 
         order.TotalPrice = calculatedTotal;
-        order.Status = "Paid"; // Default to Paid since we checked PaymentId
-        order.CreatedAt = DateTime.UtcNow;
 
-        // 3. Create a Notification Record (The "Real" way to queue emails)
         order.Notifications.Add(new Notification
         {
             Type = "Email",
@@ -73,14 +84,25 @@ public class OrdersController : ControllerBase
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, order);
+        foreach (var fileId in dto.FileIds)
+        {
+            var file = await _context.UploadedFiles.FindAsync(fileId);
+            if (file == null) return BadRequest($"File ID {fileId} not found.");
+            if (file.OrderId.HasValue) return BadRequest($"File ID {fileId} is already attached to an order.");
+            file.OrderId = order.Id;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, MapToDto(order));
     }
 
-    // GET: api/Orders/5
     [HttpGet("{id}")]
-    public async Task<ActionResult<Order>> GetOrder(int id)
+    public async Task<ActionResult<OrderDto>> GetOrder(int id)
     {
         var order = await _context.Orders
+            .Include(o => o.Items)
+                .ThenInclude(i => i.Product)
             .Include(o => o.Items)
                 .ThenInclude(i => i.Options)
             .Include(o => o.UploadedFiles)
@@ -88,20 +110,18 @@ public class OrdersController : ControllerBase
             .FirstOrDefaultAsync(o => o.Id == id);
 
         if (order == null) return NotFound();
-        return order;
+        return MapToDto(order);
     }
 
-    // PUT: api/Orders/5/status
     [HttpPut("{id}/status")]
-    public async Task<IActionResult> UpdateStatus(int id, [FromBody] string newStatus)
+    public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateOrderStatusDto dto)
     {
         var order = await _context.Orders.FindAsync(id);
         if (order == null) return NotFound();
 
-        order.Status = newStatus;
+        order.Status = dto.NewStatus;
 
-        // Log notification if completed
-        if (newStatus == "Completed")
+        if (dto.NewStatus == "Completed")
         {
             var user = await _context.Users.FindAsync(order.UserId);
             if (user != null)
@@ -119,4 +139,34 @@ public class OrdersController : ControllerBase
         await _context.SaveChangesAsync();
         return Ok(new { message = "Status updated", currentStatus = order.Status });
     }
+
+    private static OrderDto MapToDto(Order order) => new OrderDto
+    {
+        Id = order.Id,
+        UserId = order.UserId,
+        Status = order.Status,
+        TotalPrice = order.TotalPrice,
+        CreatedAt = order.CreatedAt,
+        Items = order.Items?.Select(i => new OrderItemDto
+        {
+            Id = i.Id,
+            ProductId = i.ProductId,
+            ProductName = i.Product?.Name ?? string.Empty,
+            Quantity = i.Quantity,
+            UnitPrice = i.UnitPrice,
+            Options = i.Options?.Select(o => new OrderOptionDto
+            {
+                OptionName = o.OptionName,
+                OptionValue = o.OptionValue,
+                PriceModifier = o.PriceModifier
+            }).ToList() ?? new()
+        }).ToList() ?? new(),
+        UploadedFiles = order.UploadedFiles?.Select(f => new UploadedFileDto
+        {
+            Id = f.Id,
+            OrderId = f.OrderId,
+            OriginalFileName = f.OriginalFileName,
+            UploadedAt = f.UploadedAt
+        }).ToList() ?? new()
+    };
 }
