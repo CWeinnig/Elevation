@@ -1,0 +1,33 @@
+## Visual Studio Specific
+.vs/
+[Bb]in/
+[Obj]/
+*.user
+*.userosscache
+*.sln.docstates
+.vs
+## .NET Specific
+out/
+publish/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+
+*.mdf
+*.ldf
+*.sde
+
+## User-Specific / Local Settings
+appsettings.Local.json
+
+## Elevation Project Specifics
+# Ignore user-uploaded designs/images
+wwwroot/uploads/*
+!wwwroot/uploads/.gitkeep
+
+## Node/React
+node_modules/
+dist/
+.env.local
+.env.development.local
