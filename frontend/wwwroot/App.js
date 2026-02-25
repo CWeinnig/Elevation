@@ -1,5 +1,5 @@
 
-const PRODUCTS = [
+let PRODUCTS = [
   { id: 'bc12',   name: 'Business Cards - 12pt',  price: 50  },
   { id: 'bc14',   name: 'Business Cards - 14pt',  price: 65  },
   { id: 'scc',    name: 'Specifically Cut Cards',  price: 75  },
@@ -14,6 +14,20 @@ const PRODUCTS = [
   { id: 'mm',     name: 'Marketing Materials',     price: 100 },
 ];
 
+
+// Attempt to load products from backend; fall back to local PRODUCTS above
+async function loadProducts() {
+  try {
+    const res = await fetch('/api/products');
+    if (!res.ok) throw new Error('Failed to fetch products: ' + res.status);
+    const data = await res.json();
+    if (Array.isArray(data) && data.length) {
+      PRODUCTS = data;
+    }
+  } catch (err) {
+    console.warn('Could not load products from backend, using local list.', err);
+  }
+}
 
 let cart = [];
 
@@ -229,19 +243,38 @@ function closeModalIfOutside(e) {
   }
 }
 
-function submitQuote() {
+async function submitQuote() {
   const name  = document.getElementById('contactName').value.trim();
   const email = document.getElementById('contactEmail').value.trim();
 
   if (!name)  { showToast('Please enter your name.');  return; }
   if (!email) { showToast('Please enter your email.'); return; }
 
-  
 
-  closeRequestModal();
-  cart = [];
-  updateBadge();
-  showToast("Quote submitted! We'll be in touch within 24 hours. ✓");
+  const payload = {
+    contact: { name, email },
+    items: cart
+  };
+
+  try {
+    const res = await fetch('/api/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      throw new Error('Server returned ' + res.status);
+    }
+
+    closeRequestModal();
+    cart = [];
+    updateBadge();
+    showToast("Quote submitted! We'll be in touch within 24 hours. ✓");
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to submit quote. Please try again.');
+  }
 }
 
 function toggleTheme() {
@@ -275,4 +308,5 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-renderProducts();
+// Load from backend then render (falls back to local PRODUCTS)
+loadProducts().then(renderProducts);
