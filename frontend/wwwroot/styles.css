@@ -1,3 +1,4 @@
+
 :root {
   --grad-start: #7c3aed;
   --grad-end: #06b6d4;
@@ -860,4 +861,11 @@ textarea:focus {
 
 .signin-switch a:hover {
   text-decoration: underline;
+}
+
+/* Force password inputs to match other inputs */
+input[type="password"] {
+  width: 100% !important;
+  -webkit-appearance: none;
+  appearance: none;
 }
