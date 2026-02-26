@@ -4,5 +4,8 @@
   "scripts": {
     "dev": "npx serve .",
     "start": "npx serve ."
+  },
+  "devDependencies": {
+    "eslint": "^10.0.2"
   }
 }
