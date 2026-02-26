@@ -323,6 +323,67 @@ async function submitQuote() {
   }
 }
 
+// ── Sign In Modal ─────────────────────────────
+function openSignIn() {
+  switchToSignIn();
+  document.getElementById('signInModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSignIn() {
+  document.getElementById('signInModal').classList.remove('show');
+  document.body.style.overflow = '';
+  document.getElementById('signInEmail').value    = '';
+  document.getElementById('signInPassword').value = '';
+  document.getElementById('createName').value     = '';
+  document.getElementById('createEmail').value    = '';
+  document.getElementById('createPassword').value = '';
+}
+
+function closeSignInIfOutside(e) {
+  if (e.target === document.getElementById('signInModal')) {
+    closeSignIn();
+  }
+}
+
+function switchToCreateAccount() {
+  document.getElementById('signInForm').style.display        = 'none';
+  document.getElementById('createAccountForm').style.display = 'block';
+  document.querySelector('#signInBox h2').textContent        = 'Create an Account';
+  document.querySelector('#signInBox .signin-subtitle').textContent = 'Join to save quotes and track your orders';
+}
+
+function switchToSignIn() {
+  document.getElementById('signInForm').style.display        = 'block';
+  document.getElementById('createAccountForm').style.display = 'none';
+  document.querySelector('#signInBox h2').textContent        = 'Sign In to Your Account';
+  document.querySelector('#signInBox .signin-subtitle').textContent = 'Access your saved quotes and order history';
+}
+
+function handleSignIn() {
+  const email    = document.getElementById('signInEmail').value.trim();
+  const password = document.getElementById('signInPassword').value;
+
+  if (!email)    { showToast('Please enter your email.');    return; }
+  if (!password) { showToast('Please enter your password.'); return; }
+
+  // Placeholder — wire up to your ASP.NET auth endpoint here
+  showToast('Sign in coming soon!');
+}
+
+function handleCreateAccount() {
+  const name     = document.getElementById('createName').value.trim();
+  const email    = document.getElementById('createEmail').value.trim();
+  const password = document.getElementById('createPassword').value;
+
+  if (!name)     { showToast('Please enter your name.');  return; }
+  if (!email)    { showToast('Please enter your email.'); return; }
+  if (!password) { showToast('Please enter a password.'); return; }
+
+  // Placeholder — wire up to your ASP.NET auth endpoint here
+  showToast('Account creation coming soon!');
+}
+
 // ── Dark Mode Toggle ──────────────────────────
 function toggleTheme() {
   const html = document.documentElement;

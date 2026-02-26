@@ -21,7 +21,7 @@
       My Quotes
       <span class="badge" id="quoteBadge" style="display:none;">0</span>
     </button>
-    <button class="nav-btn">
+    <button class="nav-btn" onclick="openSignIn()">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
       Sign In
     </button>
@@ -31,90 +31,6 @@
   </nav>
 </header>
 
-<div class="calculator-section">
-  <div class="calc-card">
-    <div class="calc-header">
-      <h2>Instant Price Calculator</h2>
-      <p>Select your product and options to see estimated pricing</p>
-    </div>
-    <div class="calc-body">
-      <div class="form-group">
-        <label class="form-label">Select Product <span>*</span></label>
-        <select id="calcProduct" onchange="updateCalculator()">
-          <option value="">Choose a product...</option>
-          <option value="bc12"   data-price="50">Business Cards - 12pt ($50/unit)</option>
-          <option value="bc14"   data-price="65">Business Cards - 14pt ($65/unit)</option>
-          <option value="scc"    data-price="75">Specifically Cut Cards ($75/unit)</option>
-          <option value="labels" data-price="40">Labels ($40/unit)</option>
-          <option value="inv"    data-price="80">Invitations ($80/unit)</option>
-          <option value="fly"    data-price="35">Flyers ($35/unit)</option>
-          <option value="yard"   data-price="120">Yard Signs ($120/unit)</option>
-          <option value="banner" data-price="150">Banners ($150/unit)</option>
-          <option value="poster" data-price="45">Posters ($45/unit)</option>
-          <option value="vm"     data-price="200">Vehicle Magnetic ($200/unit)</option>
-          <option value="vd"     data-price="60">Vinyl Decals ($60/unit)</option>
-          <option value="mm"     data-price="100">Marketing Materials ($100/unit)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Quantity</label>
-        <input type="number" id="calcQty" value="1" min="1" onchange="updateCalculator()" />
-      </div>
-      <div id="calcOptions" style="display:none;">
-        <div class="options-grid">
-          <div class="form-group">
-            <label class="form-label">Size</label>
-            <select id="sizeOpt" onchange="updateCalculator()">
-              <option>Standard 3.5" x 2"</option>
-              <option>Large 4" x 3"</option>
-              <option>Square 2.5" x 2.5"</option>
-              <option>Custom</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Finish</label>
-            <select id="finishOpt" onchange="updateCalculator()">
-              <option data-add="0">Standard</option>
-              <option data-add="10">Gloss (+$10)</option>
-              <option data-add="15">Matte (+$15)</option>
-              <option data-add="20">UV Coating (+$20)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Paper Type</label>
-            <select id="paperOpt" onchange="updateCalculator()">
-              <option data-add="0">Standard</option>
-              <option data-add="10">Premium (+$10)</option>
-              <option data-add="20">Recycled (+$20)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Corners</label>
-            <select id="cornerOpt" onchange="updateCalculator()">
-              <option data-add="0">Square</option>
-              <option data-add="5">Rounded (+$5)</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div id="priceEstimate" style="display:none;">
-        <div class="price-estimate">
-          <h3>Price Estimate</h3>
-          <div class="price-row"><span>Base Price (per unit):</span><span id="estBase">$0.00</span></div>
-          <div class="price-row bold"><span>Price per Unit:</span><span id="estPerUnit">$0.00</span></div>
-          <div class="price-row"><span>Quantity:</span><span id="estQty">x1</span></div>
-          <div class="price-row"><span>Subtotal:</span><span id="estSub">$0.00</span></div>
-          <div class="price-row total"><span>Estimated Total:</span><span class="amount" id="estTotal">$0.00</span></div>
-          <p class="price-note">* This is an estimated quote. Click below to submit your project for final pricing.</p>
-        </div>
-        <button class="btn-primary" onclick="addToQuoteFromCalc()">
-          <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-          Add to Quote
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <div class="products-section">
   <h2>Our Products &amp; Services</h2>
@@ -131,6 +47,7 @@
 </section>
 
 
+<!-- Quotes Sidebar -->
 <div class="overlay" id="quotesOverlay" onclick="closeIfOutside(event)">
   <div class="quotes-panel" id="quotesPanel">
     <div class="panel-header">
@@ -152,6 +69,7 @@
 </div>
 
 
+<!-- Request Quote Modal -->
 <div class="modal-overlay" id="requestModal" onclick="closeModalIfOutside(event)">
   <div class="modal" id="modalBox">
     <div class="modal-header">
@@ -182,6 +100,60 @@
       <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
       Submit Quote Request
     </button>
+  </div>
+</div>
+
+
+<!-- Sign In Modal -->
+<div class="modal-overlay" id="signInModal" onclick="closeSignInIfOutside(event)">
+  <div class="modal signin-modal" id="signInBox">
+    <div class="modal-header">
+      <div>
+        <h2>Sign In to Your Account</h2>
+        <p class="signin-subtitle">Access your saved quotes and order history</p>
+      </div>
+      <button class="close-btn" onclick="closeSignIn()">&times;</button>
+    </div>
+
+    <div id="signInForm">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="signInEmail" placeholder="your@email.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" id="signInPassword" placeholder="••••••••" />
+      </div>
+      <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleSignIn()">
+        Sign In
+      </button>
+      <p class="signin-switch">
+        Don't have an account?
+        <a href="#" onclick="switchToCreateAccount(); return false;">Create one</a>
+      </p>
+    </div>
+
+    <div id="createAccountForm" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Full Name <span>*</span></label>
+        <input type="text" id="createName" placeholder="Your name" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email <span>*</span></label>
+        <input type="email" id="createEmail" placeholder="your@email.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password <span>*</span></label>
+        <input type="password" id="createPassword" placeholder="••••••••" />
+      </div>
+      <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleCreateAccount()">
+        Create Account
+      </button>
+      <p class="signin-switch">
+        Already have an account?
+        <a href="#" onclick="switchToSignIn(); return false;">Sign in</a>
+      </p>
+    </div>
   </div>
 </div>
 

@@ -830,3 +830,33 @@ textarea:focus {
     width: 100vw;
   }
 }
+
+/* ── Sign In Modal ── */
+.signin-modal .modal-header {
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.signin-subtitle {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-top: 4px;
+  font-weight: 400;
+}
+
+.signin-switch {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 1.2rem;
+}
+
+.signin-switch a {
+  color: var(--accent2);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.signin-switch a:hover {
+  text-decoration: underline;
+}
