@@ -1,5 +1,10 @@
 
-let PRODUCTS = [
+/* ============================================
+   D & J's Elevated Designs — app.js
+   ============================================ */
+
+// ── Product Data ──────────────────────────────
+const PRODUCTS = [
   { id: 'bc12',   name: 'Business Cards - 12pt',  price: 50  },
   { id: 'bc14',   name: 'Business Cards - 14pt',  price: 65  },
   { id: 'scc',    name: 'Specifically Cut Cards',  price: 75  },
@@ -14,24 +19,10 @@ let PRODUCTS = [
   { id: 'mm',     name: 'Marketing Materials',     price: 100 },
 ];
 
-
-// Attempt to load products from backend; fall back to local PRODUCTS above
-async function loadProducts() {
-  try {
-    const res = await fetch('/api/products');
-    if (!res.ok) throw new Error('Failed to fetch products: ' + res.status);
-    const data = await res.json();
-    if (Array.isArray(data) && data.length) {
-      PRODUCTS = data;
-    }
-  } catch (err) {
-    console.warn('Could not load products from backend, using local list.', err);
-  }
-}
-
+// ── Cart State ────────────────────────────────
 let cart = [];
 
-
+// ── Render Product Cards ──────────────────────
 function renderProducts() {
   const grid = document.getElementById('productsGrid');
   grid.innerHTML = PRODUCTS.map(p => `
@@ -51,7 +42,7 @@ function renderProducts() {
   `).join('');
 }
 
-
+// ── Price Calculator ──────────────────────────
 function updateCalculator() {
   const sel       = document.getElementById('calcProduct');
   const opt       = sel.options[sel.selectedIndex];
@@ -59,12 +50,12 @@ function updateCalculator() {
   const qty       = parseInt(document.getElementById('calcQty').value) || 1;
 
   if (!basePrice) {
-    document.getElementById('calcOptions').style.display  = 'none';
+    document.getElementById('calcOptions').style.display   = 'none';
     document.getElementById('priceEstimate').style.display = 'none';
     return;
   }
 
-  document.getElementById('calcOptions').style.display  = 'block';
+  document.getElementById('calcOptions').style.display   = 'block';
   document.getElementById('priceEstimate').style.display = 'block';
 
   const finishAdd = parseFloat(document.getElementById('finishOpt').selectedOptions[0].dataset.add || 0);
@@ -107,13 +98,12 @@ function quickAddToQuote(id) {
 
   addToCart(id, prod.name, prod.price, 1);
 
-  
   const card = document.getElementById('card-' + id);
   card.classList.add('active-card');
   setTimeout(() => card.classList.remove('active-card'), 1500);
 }
 
-
+// ── Cart Logic ────────────────────────────────
 function addToCart(id, name, price, qty) {
   const existing = cart.find(i => i.id === id);
   if (existing) {
@@ -174,11 +164,11 @@ function removeItem(index) {
 function updateBadge() {
   const badge = document.getElementById('quoteBadge');
   const total = cart.reduce((s, i) => s + i.qty, 0);
-  badge.textContent    = total;
-  badge.style.display  = total > 0 ? 'inline-flex' : 'none';
+  badge.textContent   = total;
+  badge.style.display = total > 0 ? 'inline-flex' : 'none';
 }
 
-
+// ── Quotes Sidebar ────────────────────────────
 function openQuotes() {
   renderCart();
   document.getElementById('quotesOverlay').classList.add('show');
@@ -196,6 +186,7 @@ function closeIfOutside(e) {
   }
 }
 
+// ── Request Quote Modal ───────────────────────
 function openRequestModal() {
   if (cart.length === 0) {
     showToast('Add items to your quote first.');
@@ -209,7 +200,6 @@ function openRequestModal() {
     hour: 'numeric', minute: '2-digit', hour12: true,
   });
 
-  
   const orderDiv = document.getElementById('modalOrderDetails');
   orderDiv.innerHTML = cart.map(item => `
     <div class="order-detail-card">
@@ -243,40 +233,52 @@ function closeModalIfOutside(e) {
   }
 }
 
+// ── Submit Quote (calls ASP.NET backend) ──────
 async function submitQuote() {
   const name  = document.getElementById('contactName').value.trim();
   const email = document.getElementById('contactEmail').value.trim();
+  const phone = document.getElementById('contactPhone').value.trim();
+  const notes = document.getElementById('customDetails').value.trim();
 
   if (!name)  { showToast('Please enter your name.');  return; }
   if (!email) { showToast('Please enter your email.'); return; }
 
-
   const payload = {
-    contact: { name, email },
-    items: cart
+    name,
+    email,
+    phone,
+    notes,
+    submittedAt: new Date().toLocaleString(),
+    items: cart.map(i => ({
+      name:  i.name,
+      price: i.price,
+      qty:   i.qty,
+      lineTotal: i.price * i.qty
+    })),
+    total: cart.reduce((s, i) => s + i.price * i.qty, 0)
   };
 
   try {
-    const res = await fetch('/api/quotes', {
-      method: 'POST',
+    const response = await fetch('/api/quotes', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body:    JSON.stringify(payload)
     });
 
-    if (!res.ok) {
-      throw new Error('Server returned ' + res.status);
-    }
+    if (!response.ok) throw new Error('Server error');
 
     closeRequestModal();
     cart = [];
     updateBadge();
     showToast("Quote submitted! We'll be in touch within 24 hours. ✓");
+
   } catch (err) {
-    console.error(err);
+    console.error('Quote submission error:', err);
     showToast('Failed to submit quote. Please try again.');
   }
 }
 
+// ── Dark Mode Toggle ──────────────────────────
 function toggleTheme() {
   const html = document.documentElement;
   const icon = document.getElementById('themeIcon');
@@ -300,7 +302,7 @@ function toggleTheme() {
   }
 }
 
-
+// ── Toast Notification ────────────────────────
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -308,5 +310,5 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// Load from backend then render (falls back to local PRODUCTS)
-loadProducts().then(renderProducts);
+// ── Initialize ────────────────────────────────
+renderProducts();
