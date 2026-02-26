@@ -1,4 +1,3 @@
-
 /* ============================================
    D & J's Elevated Designs — app.js
    ============================================ */
@@ -109,7 +108,7 @@ function addToCart(id, name, price, qty) {
   if (existing) {
     existing.qty += qty;
   } else {
-    cart.push({ id, name, price, qty });
+    cart.push({ id, name, price, qty, imageData: null });
   }
   updateBadge();
   showToast(`"${name}" added to quotes!`);
@@ -129,6 +128,29 @@ function renderCart() {
     <div class="quote-item">
       <div class="quote-item-name">${item.name}</div>
       <div class="quote-item-price-unit">$${item.price.toFixed(2)} per unit</div>
+
+      <div class="item-image-area">
+        ${item.imageData
+          ? `<div class="attached-image-preview">
+               <img src="${item.imageData}" alt="Attached design" />
+               <div class="attached-image-info">
+                 <span class="attached-image-name">${item.imageName || 'Design file'}</span>
+                 <button class="remove-img-btn" onclick="removeItemImage(${i})">✕ Remove</button>
+               </div>
+             </div>`
+          : `<label class="attach-image-label" for="img-input-${i}">
+               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                 <polyline points="17 8 12 3 7 8"/>
+                 <line x1="12" y1="3" x2="12" y2="15"/>
+               </svg>
+               Attach Design File
+             </label>
+             <input type="file" id="img-input-${i}" accept="image/*,application/pdf"
+               style="display:none" onchange="attachItemImage(${i}, this)" />`
+        }
+      </div>
+
       <div class="quote-item-row">
         <div class="qty-wrap">
           <span>Qty:</span>
@@ -147,6 +169,26 @@ function renderCart() {
   document.getElementById('summaryItems').textContent = totalItems;
   document.getElementById('summaryTotal').textContent = `$${subtotal.toFixed(2)}`;
   summary.style.display = 'block';
+}
+
+// ── Image Attachment ──────────────────────────
+function attachItemImage(index, input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    cart[index].imageData = e.target.result;
+    cart[index].imageName = file.name;
+    renderCart();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeItemImage(index) {
+  cart[index].imageData = null;
+  cart[index].imageName = null;
+  renderCart();
 }
 
 function updateQty(index, val) {
@@ -206,6 +248,7 @@ function openRequestModal() {
       <div>
         <div style="font-weight:700;">${item.name}</div>
         <div class="order-detail-qty">Quantity: ${item.qty}</div>
+        ${item.imageName ? `<div class="order-detail-file">📎 ${item.imageName}</div>` : ''}
       </div>
       <div style="font-weight:700;">$${(item.price * item.qty).toFixed(2)}</div>
     </div>
@@ -250,10 +293,12 @@ async function submitQuote() {
     notes,
     submittedAt: new Date().toLocaleString(),
     items: cart.map(i => ({
-      name:  i.name,
-      price: i.price,
-      qty:   i.qty,
-      lineTotal: i.price * i.qty
+      name:      i.name,
+      price:     i.price,
+      qty:       i.qty,
+      lineTotal: i.price * i.qty,
+      imageName: i.imageName || null,
+      imageData: i.imageData || null,
     })),
     total: cart.reduce((s, i) => s + i.price * i.qty, 0)
   };
