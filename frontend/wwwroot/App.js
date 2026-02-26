@@ -35,7 +35,7 @@ function renderProducts() {
           <circle cx="20" cy="21" r="1"/>
           <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
         </svg>
-        Add to Quote
+        Add to Cart
       </button>
     </div>
   `).join('');
@@ -111,7 +111,7 @@ function addToCart(id, name, price, qty) {
     cart.push({ id, name, price, qty, imageData: null });
   }
   updateBadge();
-  showToast(`"${name}" added to quotes!`);
+  showToast(`"${name}" added to cart!`);
 }
 
 function renderCart() {
@@ -119,7 +119,7 @@ function renderCart() {
   const summary = document.getElementById('quoteSummary');
 
   if (cart.length === 0) {
-    list.innerHTML = '<div class="empty-quote">Your quote cart is empty.<br>Add products to get started.</div>';
+    list.innerHTML = '<div class="empty-quote">Your cart is empty.<br>Add products to get started.</div>';
     summary.style.display = 'none';
     return;
   }
@@ -231,7 +231,7 @@ function closeIfOutside(e) {
 // ── Request Quote Modal ───────────────────────
 function openRequestModal() {
   if (cart.length === 0) {
-    showToast('Add items to your quote first.');
+    showToast('Add items to your cart first.');
     return;
   }
 
@@ -357,7 +357,7 @@ function switchToSignIn() {
   document.getElementById('signInForm').style.display        = 'block';
   document.getElementById('createAccountForm').style.display = 'none';
   document.querySelector('#signInBox h2').textContent        = 'Sign In to Your Account';
-  document.querySelector('#signInBox .signin-subtitle').textContent = 'Access your saved quotes and order history';
+  document.querySelector('#signInBox .signin-subtitle').textContent = 'Access your saved cart and order history';
 }
 
 function handleSignIn() {

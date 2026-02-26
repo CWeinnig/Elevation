@@ -18,7 +18,7 @@
   <nav>
     <button class="nav-btn" onclick="openQuotes()">
       <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
-      My Quotes
+      My Cart
       <span class="badge" id="quoteBadge" style="display:none;">0</span>
     </button>
     <button class="nav-btn" onclick="openSignIn()">
@@ -42,38 +42,38 @@
   <p>Submit your project details online and we'll provide a custom quote within 24 hours</p>
   <button class="btn-cta" onclick="openQuotes()">
     <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-    Request Your Quote
+    Request Your Cart
   </button>
 </section>
 
 
-<!-- Quotes Sidebar -->
+<!-- Cart Sidebar -->
 <div class="overlay" id="quotesOverlay" onclick="closeIfOutside(event)">
   <div class="quotes-panel" id="quotesPanel">
     <div class="panel-header">
-      <h2>My Quotes</h2>
+      <h2>My Cart</h2>
       <button class="close-btn" onclick="closeQuotes()">&times;</button>
     </div>
     <div id="quotesList"></div>
     <div class="quote-summary" id="quoteSummary" style="display:none;">
-      <h3>Quote Summary</h3>
+      <h3>Cart Summary</h3>
       <div class="summary-row"><span>Total Items:</span><span id="summaryItems">0</span></div>
       <div class="summary-row bold"><span>Subtotal:</span><span id="summaryTotal" style="color:var(--accent);">$0.00</span></div>
-      <p class="summary-note">* This is an estimated quote. Click below to submit your project for final pricing.</p>
+      <p class="summary-note">* This is an estimated price. Click below to submit your project for final pricing.</p>
       <button class="btn-primary" style="margin-top:1rem;" onclick="openRequestModal()">
         <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        Request Official Quote
+        Request Official Cart
       </button>
     </div>
   </div>
 </div>
 
 
-<!-- Request Quote Modal -->
+<!-- Request Cart Modal -->
 <div class="modal-overlay" id="requestModal" onclick="closeModalIfOutside(event)">
   <div class="modal" id="modalBox">
     <div class="modal-header">
-      <h2>Request Official Quote</h2>
+      <h2>Request Official Cart</h2>
       <button class="close-btn" onclick="closeRequestModal()">&times;</button>
     </div>
     <p class="section-label">Submitted On</p>
@@ -98,7 +98,7 @@
     </div>
     <button class="btn-primary" onclick="submitQuote()">
       <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      Submit Quote Request
+      Submit Cart Request
     </button>
   </div>
 </div>
@@ -110,7 +110,7 @@
     <div class="modal-header">
       <div>
         <h2>Sign In to Your Account</h2>
-        <p class="signin-subtitle">Access your saved quotes and order history</p>
+        <p class="signin-subtitle">Access your saved cart and order history</p>
       </div>
       <button class="close-btn" onclick="closeSignIn()">&times;</button>
     </div>
