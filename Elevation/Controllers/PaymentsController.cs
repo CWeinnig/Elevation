@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Square;
-using Square.Authentication;
-using Square.Models;
+using System.Text;
+using System.Text.Json;
 
 namespace Elevation.Controllers;
 
@@ -10,10 +9,12 @@ namespace Elevation.Controllers;
 public class PaymentsController : ControllerBase
 {
     private readonly IConfiguration _config;
+    private readonly HttpClient _http;
 
-    public PaymentsController(IConfiguration config)
+    public PaymentsController(IConfiguration config, IHttpClientFactory httpFactory)
     {
         _config = config;
+        _http = httpFactory.CreateClient("Square");
     }
 
     [HttpPost("process")]
@@ -27,48 +28,53 @@ public class PaymentsController : ControllerBase
 
         var accessToken = _config["Square:AccessToken"] ?? string.Empty;
         var isSandbox = _config["Square:Environment"] == "sandbox";
+        var baseUrl = isSandbox
+            ? "https://connect.squareupsandbox.com"
+            : "https://connect.squareup.com";
 
-        var client = new SquareClient.Builder()
-            .BearerAuthCredentials(
-                new BearerAuthModel.Builder(accessToken).Build()
-            )
-            .Environment(isSandbox ? Square.Environment.Sandbox : Square.Environment.Production)
-            .Build();
-
-        var amountMoney = new Money.Builder()
-            .Amount((long)dto.AmountCents)
-            .Currency("USD")
-            .Build();
-
-        var body = new CreatePaymentRequest.Builder(
-                sourceId: dto.SourceId,
-                idempotencyKey: Guid.NewGuid().ToString()
-            )
-            .AmountMoney(amountMoney)
-            .Note("D & J's Elevated Designs Order")
-            .Build();
-
-        try
+        var payload = new
         {
-            var response = await client.PaymentsApi.CreatePaymentAsync(body);
-            var payment = response.Payment;
+            source_id = dto.SourceId,
+            idempotency_key = Guid.NewGuid().ToString(),
+            amount_money = new { amount = dto.AmountCents, currency = "USD" },
+            note = "D & J's Elevated Designs Order"
+        };
 
-            if (payment.Status != "COMPLETED")
-                return BadRequest(new { errors = new[] { $"Payment not completed. Status: {payment.Status}" } });
-
-            return Ok(new
-            {
-                paymentId = payment.Id,
-                status = payment.Status,
-                amountCents = payment.AmountMoney?.Amount
-            });
-        }
-        catch (Square.Exceptions.ApiException e)
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/v2/payments")
         {
-            var errors = e.Errors?.Select(err => err.Detail).ToArray()
-                         ?? new[] { "Payment failed." };
+            Content = new StringContent(
+                JsonSerializer.Serialize(payload),
+                Encoding.UTF8,
+                "application/json"
+            )
+        };
+
+        request.Headers.Add("Authorization", $"Bearer {accessToken}");
+        request.Headers.Add("Square-Version", "2025-01-23");
+
+        var response = await _http.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            using var errDoc = JsonDocument.Parse(body);
+            var errors = errDoc.RootElement
+                .GetProperty("errors")
+                .EnumerateArray()
+                .Select(e => e.GetProperty("detail").GetString())
+                .ToArray();
             return BadRequest(new { errors });
         }
+
+        using var doc = JsonDocument.Parse(body);
+        var payment = doc.RootElement.GetProperty("payment");
+        var paymentId = payment.GetProperty("id").GetString();
+        var status = payment.GetProperty("status").GetString();
+
+        if (status != "COMPLETED")
+            return BadRequest(new { errors = new[] { $"Payment not completed. Status: {status}" } });
+
+        return Ok(new { paymentId, status, amountCents = dto.AmountCents });
     }
 }
 

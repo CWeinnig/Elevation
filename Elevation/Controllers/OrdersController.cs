@@ -130,7 +130,7 @@ public class OrdersController : ControllerBase
             .Include(o => o.Items).ThenInclude(i => i.Product)
             .Include(o => o.Items).ThenInclude(i => i.Options)
             .Include(o => o.UploadedFiles)
-            .Where(o => o.UserId == userId)
+            .Where(o => o.UserId == (int?)userId)
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
 
@@ -175,7 +175,7 @@ public class OrdersController : ControllerBase
     private static OrderDto MapToDto(Order order) => new OrderDto
     {
         Id = order.Id,
-        UserId = order.UserId,
+        UserId = order.UserId ?? 0,
         Status = order.Status,
         TotalPrice = order.TotalPrice,
         CreatedAt = order.CreatedAt,
