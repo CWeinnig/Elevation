@@ -6,18 +6,13 @@ public static class DbInitializer
 {
     public static void Initialize(AppDbContext context)
     {
-
-
-        if (context.Products.Any())
-        {
-            return;   // DB has been seeded
-        }
+        if (context.Products.Any()) return;
 
         var products = new Product[]
         {
-            new Product{Name="Business Cards", Description="Standard 14pt", BasePrice=15.00m, IsActive=true},
-            new Product{Name="Vinyl Banner", Description="Outdoor durable", BasePrice=50.00m, IsActive=true},
-            new Product{Name="Flyers", Description="Glossy 100lb paper", BasePrice=0.25m, IsActive=true}
+            new Product { Name = "Business Cards", Description = "Standard 14pt", BasePrice = 15.00m, IsActive = true },
+            new Product { Name = "Vinyl Banner", Description = "Outdoor durable", BasePrice = 50.00m, IsActive = true },
+            new Product { Name = "Flyers", Description = "Glossy 100lb paper", BasePrice = 0.25m, IsActive = true }
         };
 
         context.Products.AddRange(products);
@@ -28,7 +23,6 @@ public static class DbInitializer
             new User { Name = "Test Customer", Email = "customer@example.com", PasswordHash = "password123", Role = "Customer", CreatedAt = DateTime.UtcNow }
         );
         context.SaveChanges();
-
 
         var options = new ProductOption[]
         {
@@ -47,8 +41,8 @@ public static class DbInitializer
             new ProductOption { ProductId = products[2].Id, OptionName = "Finish", OptionValue = "Standard", PriceModifier = 0.00m },
             new ProductOption { ProductId = products[2].Id, OptionName = "Finish", OptionValue = "Premium Glossy", PriceModifier = 0.05m },
         };
+
         context.ProductOptions.AddRange(options);
         context.SaveChanges();
-
     }
 }

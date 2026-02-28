@@ -5,14 +5,16 @@ public class Order
 {
     public int Id { get; set; }
 
-    public int UserId { get; set; }
+    public int? UserId { get; set; }
     [JsonIgnore]
     public User? User { get; set; }
+
+    public string GuestEmail { get; set; } = string.Empty;
 
     public string Status { get; set; } = "Pending";
     public decimal TotalPrice { get; set; }
 
-    public string SquarePaymentId { get; set; }
+    public string SquarePaymentId { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

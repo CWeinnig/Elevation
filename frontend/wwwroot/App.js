@@ -1,35 +1,41 @@
-/* ============================================
-   D & J's Elevated Designs — app.js
-   ============================================ */
+const API_BASE = 'http://localhost:5249';
+const SQUARE_APP_ID = 'sandbox-sq0idb-BwePK0oD1PR0SnDJLs3w5g';
+const SQUARE_LOCATION_ID = 'YOUR_SANDBOX_LOCATION_ID'; // Paste your Location ID from Square dashboard
 
-// ── Product Data ──────────────────────────────
-const PRODUCTS = [
-  { id: 'bc12',   name: 'Business Cards - 12pt',  price: 50  },
-  { id: 'bc14',   name: 'Business Cards - 14pt',  price: 65  },
-  { id: 'scc',    name: 'Specifically Cut Cards',  price: 75  },
-  { id: 'labels', name: 'Labels',                  price: 40  },
-  { id: 'inv',    name: 'Invitations',             price: 80  },
-  { id: 'fly',    name: 'Flyers',                  price: 35  },
-  { id: 'yard',   name: 'Yard Signs',              price: 120 },
-  { id: 'banner', name: 'Banners',                 price: 150 },
-  { id: 'poster', name: 'Posters',                 price: 45  },
-  { id: 'vm',     name: 'Vehicle Magnetic',        price: 200 },
-  { id: 'vd',     name: 'Vinyl Decals',            price: 60  },
-  { id: 'mm',     name: 'Marketing Materials',     price: 100 },
-];
-
-// ── Cart State ────────────────────────────────
+let products = [];
 let cart = [];
+let currentUser = null;
+let squareCard = null;
+let squarePayments = null;
 
-// ── Render Product Cards ──────────────────────
+async function init() {
+    try {
+        const res = await fetch(`${API_BASE}/api/Products`);
+        if (!res.ok) throw new Error('Failed to load products');
+        products = await res.json();
+        renderProducts();
+    } catch (e) {
+        document.getElementById('productsGrid').innerHTML =
+            '<div style="color:var(--muted);padding:2rem;">Could not connect to server. Please try again later.</div>';
+    }
+}
+
+
+// --- PRODUCT GRID ---
+
 function renderProducts() {
-  const grid = document.getElementById('productsGrid');
-  grid.innerHTML = PRODUCTS.map(p => `
+    const grid = document.getElementById('productsGrid');
+    if (products.length === 0) {
+        grid.innerHTML = '<div style="color:var(--muted);padding:2rem;">No products available.</div>';
+        return;
+    }
+
+    grid.innerHTML = products.map(p => `
     <div class="product-card" id="card-${p.id}">
       <div class="product-name">${p.name}</div>
-      <div class="product-price">$${p.price}</div>
+      <div class="product-price">$${p.basePrice.toFixed(2)}</div>
       <div class="product-unit">per unit (starting price)</div>
-      <button class="btn-add-quote" onclick="quickAddToQuote('${p.id}')">
+      <button class="btn-add-quote" onclick="quickAddToQuote(${p.id})">
         <svg viewBox="0 0 24 24">
           <circle cx="9" cy="21" r="1"/>
           <circle cx="20" cy="21" r="1"/>
@@ -41,360 +47,409 @@ function renderProducts() {
   `).join('');
 }
 
-// ── Price Calculator ──────────────────────────
-function updateCalculator() {
-  const sel       = document.getElementById('calcProduct');
-  const opt       = sel.options[sel.selectedIndex];
-  const basePrice = parseFloat(opt.dataset.price || 0);
-  const qty       = parseInt(document.getElementById('calcQty').value) || 1;
+function quickAddToQuote(productId) {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
 
-  if (!basePrice) {
-    document.getElementById('calcOptions').style.display   = 'none';
-    document.getElementById('priceEstimate').style.display = 'none';
-    return;
-  }
+    addToCart({
+        productId: product.id,
+        name: product.name,
+        basePrice: product.basePrice,
+        selectedOptions: [],
+        qty: 1
+    });
 
-  document.getElementById('calcOptions').style.display   = 'block';
-  document.getElementById('priceEstimate').style.display = 'block';
-
-  const finishAdd = parseFloat(document.getElementById('finishOpt').selectedOptions[0].dataset.add || 0);
-  const paperAdd  = parseFloat(document.getElementById('paperOpt').selectedOptions[0].dataset.add  || 0);
-  const cornerAdd = parseFloat(document.getElementById('cornerOpt').selectedOptions[0].dataset.add || 0);
-  const perUnit   = basePrice + finishAdd + paperAdd + cornerAdd;
-  const subtotal  = perUnit * qty;
-
-  document.getElementById('estBase').textContent    = `$${basePrice.toFixed(2)}`;
-  document.getElementById('estPerUnit').textContent = `$${perUnit.toFixed(2)}`;
-  document.getElementById('estQty').textContent     = `×${qty}`;
-  document.getElementById('estSub').textContent     = `$${subtotal.toFixed(2)}`;
-  document.getElementById('estTotal').textContent   = `$${subtotal.toFixed(2)}`;
+    const card = document.getElementById('card-' + productId);
+    card.classList.add('active-card');
+    setTimeout(() => card.classList.remove('active-card'), 1500);
 }
 
-function addToQuoteFromCalc() {
-  const sel       = document.getElementById('calcProduct');
-  const opt       = sel.options[sel.selectedIndex];
-  const basePrice = parseFloat(opt.dataset.price || 0);
 
-  if (!basePrice) {
-    showToast('Please select a product first.');
-    return;
-  }
+// --- CART ---
 
-  const finishAdd = parseFloat(document.getElementById('finishOpt').selectedOptions[0].dataset.add || 0);
-  const paperAdd  = parseFloat(document.getElementById('paperOpt').selectedOptions[0].dataset.add  || 0);
-  const cornerAdd = parseFloat(document.getElementById('cornerOpt').selectedOptions[0].dataset.add || 0);
-  const perUnit   = basePrice + finishAdd + paperAdd + cornerAdd;
-  const qty       = parseInt(document.getElementById('calcQty').value) || 1;
-  const id        = sel.value;
-  const name      = PRODUCTS.find(p => p.id === id)?.name || opt.text.split(' ($')[0];
-
-  addToCart(id, name, perUnit, qty);
-}
-
-function quickAddToQuote(id) {
-  const prod = PRODUCTS.find(p => p.id === id);
-  if (!prod) return;
-
-  addToCart(id, prod.name, prod.price, 1);
-
-  const card = document.getElementById('card-' + id);
-  card.classList.add('active-card');
-  setTimeout(() => card.classList.remove('active-card'), 1500);
-}
-
-// ── Cart Logic ────────────────────────────────
-function addToCart(id, name, price, qty) {
-  const existing = cart.find(i => i.id === id);
-  if (existing) {
-    existing.qty += qty;
-  } else {
-    cart.push({ id, name, price, qty, imageData: null });
-  }
-  updateBadge();
-  showToast(`"${name}" added to cart!`);
+function addToCart(item) {
+    const existing = cart.find(i => i.productId === item.productId);
+    if (existing) {
+        existing.qty += item.qty;
+    } else {
+        cart.push({ ...item });
+    }
+    updateBadge();
+    showToast(`"${item.name}" added to cart!`);
 }
 
 function renderCart() {
-  const list    = document.getElementById('quotesList');
-  const summary = document.getElementById('quoteSummary');
+    const list = document.getElementById('quotesList');
+    const summary = document.getElementById('quoteSummary');
 
-  if (cart.length === 0) {
-    list.innerHTML = '<div class="empty-quote">Your cart is empty.<br>Add products to get started.</div>';
-    summary.style.display = 'none';
-    return;
-  }
+    if (cart.length === 0) {
+        list.innerHTML = '<div class="empty-quote">Your cart is empty.<br>Add products to get started.</div>';
+        summary.style.display = 'none';
+        return;
+    }
 
-  list.innerHTML = cart.map((item, i) => `
-    <div class="quote-item">
-      <div class="quote-item-name">${item.name}</div>
-      <div class="quote-item-price-unit">$${item.price.toFixed(2)} per unit</div>
-
-      <div class="item-image-area">
-        ${item.imageData
-          ? `<div class="attached-image-preview">
-               <img src="${item.imageData}" alt="Attached design" />
-               <div class="attached-image-info">
-                 <span class="attached-image-name">${item.imageName || 'Design file'}</span>
-                 <button class="remove-img-btn" onclick="removeItemImage(${i})">✕ Remove</button>
-               </div>
-             </div>`
-          : `<label class="attach-image-label" for="img-input-${i}">
-               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                 <polyline points="17 8 12 3 7 8"/>
-                 <line x1="12" y1="3" x2="12" y2="15"/>
-               </svg>
-               Attach Design File
-             </label>
-             <input type="file" id="img-input-${i}" accept="image/*,application/pdf"
-               style="display:none" onchange="attachItemImage(${i}, this)" />`
-        }
-      </div>
-
-      <div class="quote-item-row">
-        <div class="qty-wrap">
-          <span>Qty:</span>
-          <input class="qty-input" type="number" value="${item.qty}" min="1"
-                 onchange="updateQty(${i}, this.value)" />
+    list.innerHTML = cart.map((item, i) => {
+        const unitPrice = item.basePrice + item.selectedOptions.reduce((s, o) => s + o.priceModifier, 0);
+        return `
+      <div class="quote-item">
+        <div class="quote-item-name">${item.name}</div>
+        <div class="quote-item-price-unit">$${unitPrice.toFixed(2)} per unit</div>
+        ${item.selectedOptions.length > 0 ? `
+          <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px;">
+            ${item.selectedOptions.map(o => `${o.optionName}: ${o.optionValue}`).join(' · ')}
+          </div>` : ''}
+        <div class="quote-item-row">
+          <div class="qty-wrap">
+            <span>Qty:</span>
+            <input class="qty-input" type="number" value="${item.qty}" min="1"
+                   onchange="updateQty(${i}, this.value)" />
+          </div>
+          <div class="quote-item-total">$${(unitPrice * item.qty).toFixed(2)}</div>
         </div>
-        <div class="quote-item-total">$${(item.price * item.qty).toFixed(2)}</div>
+        <button class="remove-btn" onclick="removeItem(${i})">✕</button>
       </div>
-      <button class="remove-btn" onclick="removeItem(${i})">✕</button>
-    </div>
-  `).join('');
+    `;
+    }).join('');
 
-  const subtotal   = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const totalItems = cart.reduce((s, i) => s + i.qty, 0);
+    const subtotal = getCartSubtotal();
+    const totalItems = cart.reduce((s, i) => s + i.qty, 0);
 
-  document.getElementById('summaryItems').textContent = totalItems;
-  document.getElementById('summaryTotal').textContent = `$${subtotal.toFixed(2)}`;
-  summary.style.display = 'block';
+    document.getElementById('summaryItems').textContent = totalItems;
+    document.getElementById('summaryTotal').textContent = `$${subtotal.toFixed(2)}`;
+    summary.style.display = 'block';
 }
 
-// ── Image Attachment ──────────────────────────
-function attachItemImage(index, input) {
-  const file = input.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    cart[index].imageData = e.target.result;
-    cart[index].imageName = file.name;
-    renderCart();
-  };
-  reader.readAsDataURL(file);
-}
-
-function removeItemImage(index) {
-  cart[index].imageData = null;
-  cart[index].imageName = null;
-  renderCart();
+function getCartSubtotal() {
+    return cart.reduce((s, item) => {
+        const unitPrice = item.basePrice + item.selectedOptions.reduce((os, o) => os + o.priceModifier, 0);
+        return s + unitPrice * item.qty;
+    }, 0);
 }
 
 function updateQty(index, val) {
-  cart[index].qty = Math.max(1, parseInt(val) || 1);
-  renderCart();
-  updateBadge();
+    cart[index].qty = Math.max(1, parseInt(val) || 1);
+    renderCart();
+    updateBadge();
 }
 
 function removeItem(index) {
-  cart.splice(index, 1);
-  renderCart();
-  updateBadge();
+    cart.splice(index, 1);
+    renderCart();
+    updateBadge();
 }
 
 function updateBadge() {
-  const badge = document.getElementById('quoteBadge');
-  const total = cart.reduce((s, i) => s + i.qty, 0);
-  badge.textContent   = total;
-  badge.style.display = total > 0 ? 'inline-flex' : 'none';
+    const badge = document.getElementById('quoteBadge');
+    const total = cart.reduce((s, i) => s + i.qty, 0);
+    badge.textContent = total;
+    badge.style.display = total > 0 ? 'inline-flex' : 'none';
 }
 
-// ── Quotes Sidebar ────────────────────────────
+
+// --- CART PANEL ---
+
 function openQuotes() {
-  renderCart();
-  document.getElementById('quotesOverlay').classList.add('show');
-  document.body.style.overflow = 'hidden';
+    renderCart();
+    document.getElementById('quotesOverlay').classList.add('show');
+    document.body.style.overflow = 'hidden';
 }
 
 function closeQuotes() {
-  document.getElementById('quotesOverlay').classList.remove('show');
-  document.body.style.overflow = '';
+    document.getElementById('quotesOverlay').classList.remove('show');
+    document.body.style.overflow = '';
 }
 
 function closeIfOutside(e) {
-  if (e.target === document.getElementById('quotesOverlay')) {
-    closeQuotes();
-  }
+    if (e.target === document.getElementById('quotesOverlay')) closeQuotes();
 }
 
-// ── Request Quote Modal ───────────────────────
-function openRequestModal() {
-  if (cart.length === 0) {
-    showToast('Add items to your cart first.');
-    return;
-  }
 
-  closeQuotes();
+// --- REQUEST MODAL ---
 
-  document.getElementById('submittedTime').textContent = new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  });
+async function openRequestModal() {
+    if (cart.length === 0) {
+        showToast('Add items to your cart first.');
+        return;
+    }
 
-  const orderDiv = document.getElementById('modalOrderDetails');
-  orderDiv.innerHTML = cart.map(item => `
-    <div class="order-detail-card">
-      <div>
-        <div style="font-weight:700;">${item.name}</div>
-        <div class="order-detail-qty">Quantity: ${item.qty}</div>
-        ${item.imageName ? `<div class="order-detail-file">📎 ${item.imageName}</div>` : ''}
+    closeQuotes();
+
+    document.getElementById('submittedTime').textContent = new Date().toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+
+    const orderDiv = document.getElementById('modalOrderDetails');
+    orderDiv.innerHTML = cart.map(item => {
+        const unitPrice = item.basePrice + item.selectedOptions.reduce((s, o) => s + o.priceModifier, 0);
+        return `
+      <div class="order-detail-card">
+        <div>
+          <div style="font-weight:700;">${item.name}</div>
+          ${item.selectedOptions.length > 0 ? `
+            <div style="font-size:0.8rem;color:var(--muted);">
+              ${item.selectedOptions.map(o => `${o.optionName}: ${o.optionValue}`).join(' · ')}
+            </div>` : ''}
+          <div class="order-detail-qty">Quantity: ${item.qty}</div>
+        </div>
+        <div style="font-weight:700;">$${(unitPrice * item.qty).toFixed(2)}</div>
       </div>
-      <div style="font-weight:700;">$${(item.price * item.qty).toFixed(2)}</div>
-    </div>
-  `).join('');
+    `;
+    }).join('');
 
-  const subtotal   = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const totalItems = cart.reduce((s, i) => s + i.qty, 0);
+    const subtotal = getCartSubtotal();
+    const totalItems = cart.reduce((s, i) => s + i.qty, 0);
 
-  document.getElementById('modalSubtotal').textContent   = `$${subtotal.toFixed(2)}`;
-  document.getElementById('modalTotal').textContent      = `$${subtotal.toFixed(2)}`;
-  document.getElementById('modalQtyDisplay').textContent = `×${totalItems}`;
+    document.getElementById('modalSubtotal').textContent = `$${subtotal.toFixed(2)}`;
+    document.getElementById('modalTotal').textContent = `$${subtotal.toFixed(2)}`;
+    document.getElementById('modalQtyDisplay').textContent = `×${totalItems}`;
 
-  document.getElementById('requestModal').classList.add('show');
-  document.body.style.overflow = 'hidden';
+    document.getElementById('requestModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+
+    await initSquare();
 }
 
 function closeRequestModal() {
-  document.getElementById('requestModal').classList.remove('show');
-  document.body.style.overflow = '';
+    document.getElementById('requestModal').classList.remove('show');
+    document.body.style.overflow = '';
+    if (squareCard) {
+        squareCard.destroy();
+        squareCard = null;
+    }
 }
 
 function closeModalIfOutside(e) {
-  if (e.target === document.getElementById('requestModal')) {
-    closeRequestModal();
-  }
+    if (e.target === document.getElementById('requestModal')) closeRequestModal();
 }
 
-// ── Submit Quote (calls ASP.NET backend) ──────
+
+// --- SQUARE PAYMENT ---
+
+async function initSquare() {
+    try {
+        if (!window.Square) {
+            showToast('Payment system failed to load. Please refresh.');
+            return;
+        }
+
+        squarePayments = window.Square.payments(SQUARE_APP_ID, SQUARE_LOCATION_ID);
+        squareCard = await squarePayments.card({
+            style: {
+                '.input-container': { borderRadius: '10px' },
+                '.input-container.is-focus': { borderColor: '#7c3aed' },
+            }
+        });
+        await squareCard.attach('#square-card-container');
+    } catch (e) {
+        console.error('Square init error:', e);
+        document.getElementById('square-card-container').innerHTML =
+            '<p style="color:#ef4444;font-size:0.85rem;">Payment form failed to load.</p>';
+    }
+}
+
 async function submitQuote() {
-  const name  = document.getElementById('contactName').value.trim();
-  const email = document.getElementById('contactEmail').value.trim();
-  const phone = document.getElementById('contactPhone').value.trim();
-  const notes = document.getElementById('customDetails').value.trim();
+    const name = document.getElementById('contactName').value.trim();
+    const email = document.getElementById('contactEmail').value.trim();
 
-  if (!name)  { showToast('Please enter your name.');  return; }
-  if (!email) { showToast('Please enter your email.'); return; }
+    if (!name) { showToast('Please enter your name.'); return; }
+    if (!email) { showToast('Please enter your email.'); return; }
 
-  const payload = {
-    name,
-    email,
-    phone,
-    notes,
-    submittedAt: new Date().toLocaleString(),
-    items: cart.map(i => ({
-      name:      i.name,
-      price:     i.price,
-      qty:       i.qty,
-      lineTotal: i.price * i.qty,
-      imageName: i.imageName || null,
-      imageData: i.imageData || null,
-    })),
-    total: cart.reduce((s, i) => s + i.price * i.qty, 0)
-  };
+    if (!squareCard) {
+        showToast('Payment form not ready. Please wait.');
+        return;
+    }
 
-  try {
-    const response = await fetch('/api/quotes', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload)
-    });
+    const submitBtn = document.querySelector('#modalBox .btn-primary:last-of-type');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Processing...';
 
-    if (!response.ok) throw new Error('Server error');
+    try {
+        // 1. Tokenize the card with Square
+        const tokenResult = await squareCard.tokenize();
+        if (tokenResult.status !== 'OK') {
+            const errs = tokenResult.errors?.map(e => e.message).join(', ') || 'Card error.';
+            showToast(`Payment error: ${errs}`);
+            return;
+        }
 
-    closeRequestModal();
-    cart = [];
-    updateBadge();
-    showToast("Quote submitted! We'll be in touch within 24 hours. ✓");
+        const sourceId = tokenResult.token;
+        const amountCents = Math.round(getCartSubtotal() * 100);
 
-  } catch (err) {
-    console.error('Quote submission error:', err);
-    showToast('Failed to submit quote. Please try again.');
-  }
+        // 2. Send token to backend to charge
+        const paymentRes = await fetch(`${API_BASE}/api/Payments/process`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceId, amountCents })
+        });
+
+        if (!paymentRes.ok) {
+            const err = await paymentRes.json();
+            showToast(`Payment failed: ${err.errors?.[0] || 'Unknown error'}`);
+            return;
+        }
+
+        const payment = await paymentRes.json();
+
+        // 3. Create the order in our system
+        const orderPayload = {
+            userId: currentUser?.id ?? 0,
+            guestEmail: currentUser ? '' : email,
+            squarePaymentId: payment.paymentId,
+            fileIds: [],
+            items: cart.map(item => ({
+                productId: item.productId,
+                quantity: item.qty,
+                options: item.selectedOptions.map(o => ({ productOptionId: o.productOptionId }))
+            }))
+        };
+
+        const orderRes = await fetch(`${API_BASE}/api/Orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderPayload)
+        });
+
+        if (!orderRes.ok) {
+            const err = await orderRes.text();
+            showToast(`Order failed: ${err}`);
+            return;
+        }
+
+        const order = await orderRes.json();
+
+        // 4. Success
+        closeRequestModal();
+        cart = [];
+        updateBadge();
+        showToast(`Order #${order.id} placed successfully! ✓`);
+
+    } catch (err) {
+        console.error('Checkout error:', err);
+        showToast('Something went wrong. Please try again.');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Order';
+    }
 }
 
-// ── Sign In Modal ─────────────────────────────
+
+// --- SIGN IN / REGISTER ---
+
 function openSignIn() {
-  switchToSignIn();
-  document.getElementById('signInModal').classList.add('show');
-  document.body.style.overflow = 'hidden';
+    if (currentUser) {
+        showToast(`Signed in as ${currentUser.name}`);
+        return;
+    }
+    switchToSignIn();
+    document.getElementById('signInModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
 }
 
 function closeSignIn() {
-  document.getElementById('signInModal').classList.remove('show');
-  document.body.style.overflow = '';
-  document.getElementById('signInEmail').value    = '';
-  document.getElementById('signInPassword').value = '';
-  document.getElementById('createName').value     = '';
-  document.getElementById('createEmail').value    = '';
-  document.getElementById('createPassword').value = '';
+    document.getElementById('signInModal').classList.remove('show');
+    document.body.style.overflow = '';
+    document.getElementById('signInEmail').value = '';
+    document.getElementById('signInPassword').value = '';
+    document.getElementById('createName').value = '';
+    document.getElementById('createEmail').value = '';
+    document.getElementById('createPassword').value = '';
 }
 
 function closeSignInIfOutside(e) {
-  if (e.target === document.getElementById('signInModal')) {
-    closeSignIn();
-  }
+    if (e.target === document.getElementById('signInModal')) closeSignIn();
 }
 
 function switchToCreateAccount() {
-  document.getElementById('signInForm').style.display        = 'none';
-  document.getElementById('createAccountForm').style.display = 'block';
-  document.querySelector('#signInBox h2').textContent        = 'Create an Account';
-  document.querySelector('#signInBox .signin-subtitle').textContent = 'Join to save quotes and track your orders';
+    document.getElementById('signInForm').style.display = 'none';
+    document.getElementById('createAccountForm').style.display = 'block';
+    document.querySelector('#signInBox h2').textContent = 'Create an Account';
+    document.querySelector('#signInBox .signin-subtitle').textContent = 'Join to save quotes and track your orders';
 }
 
 function switchToSignIn() {
-  document.getElementById('signInForm').style.display        = 'block';
-  document.getElementById('createAccountForm').style.display = 'none';
-  document.querySelector('#signInBox h2').textContent        = 'Sign In to Your Account';
-  document.querySelector('#signInBox .signin-subtitle').textContent = 'Access your saved cart and order history';
+    document.getElementById('signInForm').style.display = 'block';
+    document.getElementById('createAccountForm').style.display = 'none';
+    document.querySelector('#signInBox h2').textContent = 'Sign In to Your Account';
+    document.querySelector('#signInBox .signin-subtitle').textContent = 'Access your saved cart and order history';
 }
 
-function handleSignIn() {
-  const email    = document.getElementById('signInEmail').value.trim();
-  const password = document.getElementById('signInPassword').value;
+async function handleSignIn() {
+    const email = document.getElementById('signInEmail').value.trim();
+    const password = document.getElementById('signInPassword').value;
 
-  if (!email)    { showToast('Please enter your email.');    return; }
-  if (!password) { showToast('Please enter your password.'); return; }
+    if (!email) { showToast('Please enter your email.'); return; }
+    if (!password) { showToast('Please enter your password.'); return; }
 
-  // Placeholder — wire up to your ASP.NET auth endpoint here
-  showToast('Sign in coming soon!');
+    try {
+        const res = await fetch(`${API_BASE}/api/Users/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        if (res.status === 401) { showToast('Invalid email or password.'); return; }
+        if (!res.ok) throw new Error();
+
+        currentUser = await res.json();
+        closeSignIn();
+        updateNavUser();
+        showToast(`Welcome back, ${currentUser.name}!`);
+    } catch {
+        showToast('Sign in failed. Please try again.');
+    }
 }
 
-function handleCreateAccount() {
-  const name     = document.getElementById('createName').value.trim();
-  const email    = document.getElementById('createEmail').value.trim();
-  const password = document.getElementById('createPassword').value;
+async function handleCreateAccount() {
+    const name = document.getElementById('createName').value.trim();
+    const email = document.getElementById('createEmail').value.trim();
+    const password = document.getElementById('createPassword').value;
 
-  if (!name)     { showToast('Please enter your name.');  return; }
-  if (!email)    { showToast('Please enter your email.'); return; }
-  if (!password) { showToast('Please enter a password.'); return; }
+    if (!name) { showToast('Please enter your name.'); return; }
+    if (!email) { showToast('Please enter your email.'); return; }
+    if (!password) { showToast('Please enter a password.'); return; }
 
-  // Placeholder — wire up to your ASP.NET auth endpoint here
-  showToast('Account creation coming soon!');
+    try {
+        const res = await fetch(`${API_BASE}/api/Users/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+        });
+
+        if (res.status === 409) { showToast('Email is already registered.'); return; }
+        if (!res.ok) throw new Error();
+
+        currentUser = await res.json();
+        closeSignIn();
+        updateNavUser();
+        showToast(`Account created! Welcome, ${currentUser.name}!`);
+    } catch {
+        showToast('Account creation failed. Please try again.');
+    }
 }
 
-// ── Dark Mode Toggle ──────────────────────────
+function updateNavUser() {
+    const label = document.getElementById('navUserLabel');
+    if (currentUser) {
+        label.textContent = currentUser.name;
+    } else {
+        label.textContent = 'Sign In';
+    }
+}
+
+
+// --- THEME ---
+
 function toggleTheme() {
-  const html = document.documentElement;
-  const icon = document.getElementById('themeIcon');
+    const html = document.documentElement;
+    const icon = document.getElementById('themeIcon');
 
-  if (html.dataset.theme === 'dark') {
-    html.dataset.theme = 'light';
-    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>';
-  } else {
-    html.dataset.theme = 'dark';
-    icon.innerHTML = `
+    if (html.dataset.theme === 'dark') {
+        html.dataset.theme = 'light';
+        icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>';
+    } else {
+        html.dataset.theme = 'dark';
+        icon.innerHTML = `
       <circle cx="12" cy="12" r="5"/>
       <line x1="12" y1="1"  x2="12" y2="3"/>
       <line x1="12" y1="21" x2="12" y2="23"/>
@@ -405,16 +460,18 @@ function toggleTheme() {
       <line x1="4.22"  y1="19.78" x2="5.64"  y2="18.36"/>
       <line x1="18.36" y1="5.64"  x2="19.78" y2="4.22"/>
     `;
-  }
+    }
 }
 
-// ── Toast Notification ────────────────────────
+
+// --- TOAST ---
+
 function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ── Initialize ────────────────────────────────
-renderProducts();
+
+init();

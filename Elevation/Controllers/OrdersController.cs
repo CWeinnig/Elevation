@@ -22,12 +22,29 @@ public class OrdersController : ControllerBase
         if (string.IsNullOrEmpty(dto.SquarePaymentId))
             return BadRequest("Payment verification failed: Missing SquarePaymentId.");
 
-        var user = await _context.Users.FindAsync(dto.UserId);
-        if (user == null) return BadRequest("User does not exist.");
+        // Resolve recipient email — logged in user or guest
+        string recipientEmail;
+        int resolvedUserId = dto.UserId;
+
+        if (dto.UserId > 0)
+        {
+            var user = await _context.Users.FindAsync(dto.UserId);
+            if (user == null) return BadRequest("User does not exist.");
+            recipientEmail = user.Email;
+        }
+        else if (!string.IsNullOrEmpty(dto.GuestEmail))
+        {
+            recipientEmail = dto.GuestEmail;
+            resolvedUserId = 0;
+        }
+        else
+        {
+            return BadRequest("Either a UserId or GuestEmail is required.");
+        }
 
         var order = new Order
         {
-            UserId = dto.UserId,
+            UserId = resolvedUserId,
             SquarePaymentId = dto.SquarePaymentId,
             Status = "Paid",
             CreatedAt = DateTime.UtcNow,
@@ -49,10 +66,10 @@ public class OrdersController : ControllerBase
             {
                 var dbOption = await _context.ProductOptions.FindAsync(optDto.ProductOptionId);
                 if (dbOption == null) return BadRequest($"ProductOption ID {optDto.ProductOptionId} not found.");
-                if (dbOption.ProductId != itemDto.ProductId) return BadRequest($"ProductOption {optDto.ProductOptionId} does not belong to Product {itemDto.ProductId}.");
+                if (dbOption.ProductId != itemDto.ProductId)
+                    return BadRequest($"ProductOption {optDto.ProductOptionId} does not belong to Product {itemDto.ProductId}.");
 
                 itemCost += dbOption.PriceModifier;
-
                 orderOptions.Add(new OrderOption
                 {
                     OptionName = dbOption.OptionName,
@@ -77,7 +94,7 @@ public class OrdersController : ControllerBase
         order.Notifications.Add(new Notification
         {
             Type = "Email",
-            Recipient = user.Email,
+            Recipient = recipientEmail,
             SentAt = DateTime.UtcNow
         });
 
@@ -94,23 +111,30 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, MapToDto(order));
+        var created = await GetOrderWithIncludes(order.Id);
+        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, MapToDto(created!));
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<OrderDto>> GetOrder(int id)
     {
-        var order = await _context.Orders
-            .Include(o => o.Items)
-                .ThenInclude(i => i.Product)
-            .Include(o => o.Items)
-                .ThenInclude(i => i.Options)
-            .Include(o => o.UploadedFiles)
-            .Include(o => o.Notifications)
-            .FirstOrDefaultAsync(o => o.Id == id);
-
+        var order = await GetOrderWithIncludes(id);
         if (order == null) return NotFound();
         return MapToDto(order);
+    }
+
+    [HttpGet("user/{userId}")]
+    public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrdersForUser(int userId)
+    {
+        var orders = await _context.Orders
+            .Include(o => o.Items).ThenInclude(i => i.Product)
+            .Include(o => o.Items).ThenInclude(i => i.Options)
+            .Include(o => o.UploadedFiles)
+            .Where(o => o.UserId == userId)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync();
+
+        return Ok(orders.Select(MapToDto));
     }
 
     [HttpPut("{id}/status")]
@@ -140,6 +164,14 @@ public class OrdersController : ControllerBase
         return Ok(new { message = "Status updated", currentStatus = order.Status });
     }
 
+    private async Task<Order?> GetOrderWithIncludes(int id) =>
+        await _context.Orders
+            .Include(o => o.Items).ThenInclude(i => i.Product)
+            .Include(o => o.Items).ThenInclude(i => i.Options)
+            .Include(o => o.UploadedFiles)
+            .Include(o => o.Notifications)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
     private static OrderDto MapToDto(Order order) => new OrderDto
     {
         Id = order.Id,
@@ -166,7 +198,8 @@ public class OrdersController : ControllerBase
             Id = f.Id,
             OrderId = f.OrderId,
             OriginalFileName = f.OriginalFileName,
-            UploadedAt = f.UploadedAt
+            UploadedAt = f.UploadedAt,
+            DownloadUrl = $"/api/Files/{f.Id}/download"
         }).ToList() ?? new()
     };
 }
