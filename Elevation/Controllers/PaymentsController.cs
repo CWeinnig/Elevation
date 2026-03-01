@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using System.Text;
-using System.Text.Json;
+using Square;
+using Square.Payments;
+using System;
+using System.Threading.Tasks;
 
 namespace Elevation.Controllers;
 
@@ -8,73 +10,69 @@ namespace Elevation.Controllers;
 [Route("api/[controller]")]
 public class PaymentsController : ControllerBase
 {
-    private readonly IConfiguration _config;
-    private readonly HttpClient _http;
+    private readonly SquareClient _squareClient;
 
-    public PaymentsController(IConfiguration config, IHttpClientFactory httpFactory)
+    public PaymentsController(IConfiguration config)
     {
-        _config = config;
-        _http = httpFactory.CreateClient("Square");
+        // 1. The Environment is now an enum passed into ClientOptions
+        var baseUrl = config["Square:Environment"] == "sandbox"
+            ? SquareEnvironment.Sandbox
+            : SquareEnvironment.Production;
+
+        var accessToken = config["Square:AccessToken"] ?? string.Empty;
+
+        // 2. Builders are gone; instantiate the client directly
+        _squareClient = new SquareClient(
+            accessToken,
+            new ClientOptions { BaseUrl = baseUrl }
+        );
     }
 
     [HttpPost("process")]
     public async Task<IActionResult> ProcessPayment([FromBody] ProcessPaymentDto dto)
     {
         if (string.IsNullOrEmpty(dto.SourceId))
-            return BadRequest("Missing payment source.");
+            return BadRequest(new { errors = new[] { "Missing payment source." } });
 
         if (dto.AmountCents <= 0)
-            return BadRequest("Invalid payment amount.");
+            return BadRequest(new { errors = new[] { "Invalid payment amount." } });
 
-        var accessToken = _config["Square:AccessToken"] ?? string.Empty;
-        var isSandbox = _config["Square:Environment"] == "sandbox";
-        var baseUrl = isSandbox
-            ? "https://connect.squareupsandbox.com"
-            : "https://connect.squareup.com";
-
-        var payload = new
+        // 3. Use standard C# object initializers instead of Builders
+        var request = new CreatePaymentRequest
         {
-            source_id = dto.SourceId,
-            idempotency_key = Guid.NewGuid().ToString(),
-            amount_money = new { amount = dto.AmountCents, currency = "USD" },
-            note = "D & J's Elevated Designs Order"
+            SourceId = dto.SourceId,
+            IdempotencyKey = Guid.NewGuid().ToString(),
+            AmountMoney = new Money
+            {
+                Amount = (long)dto.AmountCents,
+                Currency = Currency.Usd // 4. Currency is now a strongly-typed enum
+            },
+            Note = "D & J's Elevated Designs Order"
         };
 
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/v2/payments")
+        try
         {
-            Content = new StringContent(
-                JsonSerializer.Serialize(payload),
-                Encoding.UTF8,
-                "application/json"
-            )
-        };
+            // 5. PaymentsApi was shortened to just Payments, and CreatePaymentAsync to CreateAsync
+            var response = await _squareClient.Payments.CreateAsync(request);
+            var payment = response.Payment;
 
-        request.Headers.Add("Authorization", $"Bearer {accessToken}");
-        request.Headers.Add("Square-Version", "2025-01-23");
+            if (payment.Status != "COMPLETED")
+            {
+                return BadRequest(new { errors = new[] { $"Payment not completed. Status: {payment.Status}" } });
+            }
 
-        var response = await _http.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-        {
-            using var errDoc = JsonDocument.Parse(body);
-            var errors = errDoc.RootElement
-                .GetProperty("errors")
-                .EnumerateArray()
-                .Select(e => e.GetProperty("detail").GetString())
-                .ToArray();
-            return BadRequest(new { errors });
+            return Ok(new
+            {
+                paymentId = payment.Id,
+                status = payment.Status,
+                amountCents = dto.AmountCents
+            });
         }
-
-        using var doc = JsonDocument.Parse(body);
-        var payment = doc.RootElement.GetProperty("payment");
-        var paymentId = payment.GetProperty("id").GetString();
-        var status = payment.GetProperty("status").GetString();
-
-        if (status != "COMPLETED")
-            return BadRequest(new { errors = new[] { $"Payment not completed. Status: {status}" } });
-
-        return Ok(new { paymentId, status, amountCents = dto.AmountCents });
+        catch (Exception ex)
+        {
+            // 6. Catch standard exceptions, which also clears your CS0168 error
+            return BadRequest(new { errors = new[] { ex.Message } });
+        }
     }
 }
 

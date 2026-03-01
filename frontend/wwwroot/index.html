@@ -1,162 +1,186 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>D & J's Elevated Designs</title>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D & J's Elevated Designs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="https://sandbox.web.squarecdn.com/v1/square.js"></script>
+    <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
+    <header>
+        <a class="logo-wrap" href="#">
+            <div class="logo-img">D&amp;J</div>
+            <span class="logo-text">D &amp; J's Elevated Designs</span>
+        </a>
+        <nav>
+            <button class="nav-btn" onclick="openQuotes()">
+                <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /></svg>
+                My Cart
+                <span class="badge" id="quoteBadge" style="display:none;">0</span>
+            </button>
+            <button class="nav-btn" onclick="openSignIn()">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+                Sign In
+            </button>
+            <button class="nav-btn" onclick="toggleTheme()" title="Toggle dark mode">
+                <svg id="themeIcon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" /></svg>
+            </button>
+        </nav>
+    </header>
 
-<header>
-  <a class="logo-wrap" href="#">
-    <div class="logo-img">D&amp;J</div>
-    <span class="logo-text">D &amp; J's Elevated Designs</span>
-  </a>
-  <nav>
-    <button class="nav-btn" onclick="openQuotes()">
-      <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
-      My Cart
-      <span class="badge" id="quoteBadge" style="display:none;">0</span>
-    </button>
-    <button class="nav-btn" onclick="openSignIn()">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-      Sign In
-    </button>
-    <button class="nav-btn" onclick="toggleTheme()" title="Toggle dark mode">
-      <svg id="themeIcon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
-    </button>
-  </nav>
-</header>
-
-
-<div class="products-section">
-  <h2>Our Products &amp; Services</h2>
-  <div class="products-grid" id="productsGrid"></div>
-</div>
-
-<section class="cta-section">
-  <h2>Ready to Get Started?</h2>
-  <p>Submit your project details online and we'll provide a custom quote within 24 hours</p>
-  
-</section>
-
-
-<!-- Cart Sidebar -->
-<div class="overlay" id="quotesOverlay" onclick="closeIfOutside(event)">
-  <div class="quotes-panel" id="quotesPanel">
-    <div class="panel-header">
-      <h2>My Cart</h2>
-      <button class="close-btn" onclick="closeQuotes()">&times;</button>
-    </div>
-    <div id="quotesList"></div>
-    <div class="quote-summary" id="quoteSummary" style="display:none;">
-      <h3>Cart Summary</h3>
-      <div class="summary-row"><span>Total Items:</span><span id="summaryItems">0</span></div>
-      <div class="summary-row bold"><span>Subtotal:</span><span id="summaryTotal" style="color:var(--accent);">$0.00</span></div>
-      <p class="summary-note">* This is an estimated price. Click below to submit your project for final pricing.</p>
-      <button class="btn-primary" style="margin-top:1rem;" onclick="openRequestModal()">
-        <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-         Purchase
-      </button>
-    </div>
-  </div>
-</div>
-
-
-<!-- Request Cart Modal -->
-<div class="modal-overlay" id="requestModal" onclick="closeModalIfOutside(event)">
-  <div class="modal" id="modalBox">
-    <div class="modal-header">
-      <h2> Cart</h2>
-      <button class="close-btn" onclick="closeRequestModal()">&times;</button>
-    </div>
-    <p class="section-label">Submitted On</p>
-    <p id="submittedTime" style="font-size:0.9rem;margin-bottom:0.5rem;color:var(--muted);"></p>
-    <p class="section-label">Contact Information</p>
-    <div class="form-group"><label class="form-label">Name <span>*</span></label><input type="text" id="contactName" placeholder="Your name" /></div>
-    <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="contactEmail" placeholder="you@example.com" /></div>
-    <div class="form-group"><label class="form-label">Phone</label><input type="tel" id="contactPhone" placeholder="(555) 000-0000" /></div>
-    <p class="section-label">Order Details</p>
-    <div id="modalOrderDetails"></div>
-    <div class="modal-price-summary">
-      <div class="mps-title">Price Summary</div>
-      <div class="mps-row"><span>Base Price (per unit):</span><span>$0.00</span></div>
-      <div class="mps-row bold"><span>Price per Unit:</span><span>$0.00</span></div>
-      <div class="mps-row"><span>Quantity:</span><span id="modalQtyDisplay">x1</span></div>
-      <div class="mps-row"><span>Subtotal:</span><span id="modalSubtotal">$0.00</span></div>
-      <div class="mps-row total-row"><span>Estimated Total:</span><span class="amount" id="modalTotal">$0.00</span></div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Custom Details / Notes</label>
-      <textarea id="customDetails" rows="3" placeholder="Any special instructions, colors, or requests..."></textarea>
-    </div>
-    <button class="btn-primary" onclick="submitQuote()">
-      <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      Cart 
-    </button>
-  </div>
-</div>
-
-
-<!-- Sign In Modal -->
-<div class="modal-overlay" id="signInModal" onclick="closeSignInIfOutside(event)">
-  <div class="modal signin-modal" id="signInBox">
-    <div class="modal-header">
-      <div>
-        <h2>Sign In to Your Account</h2>
-        <p class="signin-subtitle">Access your saved cart and order history</p>
-      </div>
-      <button class="close-btn" onclick="closeSignIn()">&times;</button>
+    <div class="products-wrapper" style="flex-grow: 1; min-height: calc(100vh - 350px);">
+        <div class="products-section">
+            <h2>Our Products &amp; Services</h2>
+            <div class="products-grid" id="productsGrid">
+                <div style="color:var(--muted);padding:2rem;grid-column:1/-1;">Loading products...</div>
+            </div>
+        </div>
     </div>
 
-    <div id="signInForm">
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input type="email" id="signInEmail" placeholder="your@email.com" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password</label>
-        <input type="password" id="signInPassword" placeholder="••••••••" />
-      </div>
-      <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleSignIn()">
-        Sign In
-      </button>
-      <p class="signin-switch">
-        Don't have an account?
-        <a href="#" onclick="switchToCreateAccount(); return false;">Create one</a>
-      </p>
+    <footer style="background:linear-gradient(120deg,#7c3aed,#06b6d4);padding:3rem 2rem 1.5rem;margin-top:auto;">
+        <div style="max-width:1100px;margin:0 auto 1.5rem;display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2.5rem;align-items:start;">
+
+            <div>
+                <div style="width:52px;height:52px;border-radius:8px;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.3);color:#fff;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;margin-bottom:0.75rem;">D&amp;J</div>
+                <p style="font-size:0.88rem;color:rgba(255,255,255,0.8);line-height:1.6;max-width:240px;">Professional printing and design services tailored to your vision.</p>
+            </div>
+
+            <div>
+                <h4 style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:#fff;margin-bottom:1rem;">Contact Us</h4>
+                <a href="mailto:digitizeyourideas@gmail.com" style="display:flex;align-items:center;gap:8px;font-size:0.88rem;color:rgba(255,255,255,0.8);text-decoration:none;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.8)'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+                    digitizeyourideas@gmail.com
+                </a>
+            </div>
+
+            <div>
+                <h4 style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:#fff;margin-bottom:1rem;">Follow Us</h4>
+                <a href="https://www.facebook.com/profile.php?id=61583537794781" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;font-size:0.88rem;color:rgba(255,255,255,0.8);text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.8)'">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" /></svg>
+                    Facebook
+                </a>
+            </div>
+
+        </div>
+        <div style="max-width:1100px;margin:0 auto;border-top:1px solid rgba(255,255,255,0.2);padding-top:1.25rem;font-size:0.78rem;color:rgba(255,255,255,0.6);display:flex;justify-content:space-between;align-items:center;">
+            <span>&copy; 2026 D &amp; J's Elevated Designs. All rights reserved.</span>
+            <span>Powered by Square Payments</span>
+        </div>
+    </footer>
+
+    <!-- Cart Sidebar -->
+    <div class="overlay" id="quotesOverlay" onclick="closeIfOutside(event)">
+        <div class="quotes-panel" id="quotesPanel">
+            <div class="panel-header">
+                <h2>My Cart</h2>
+                <button class="close-btn" onclick="closeQuotes()">&times;</button>
+            </div>
+            <div id="quotesList"></div>
+            <div class="quote-summary" id="quoteSummary" style="display:none;">
+                <h3>Cart Summary</h3>
+                <div class="summary-row"><span>Total Items:</span><span id="summaryItems">0</span></div>
+                <div class="summary-row bold"><span>Subtotal:</span><span id="summaryTotal" style="color:var(--accent);">$0.00</span></div>
+                <p class="summary-note">* This is an estimated price. Click below to submit your project for final pricing.</p>
+                <button class="btn-primary" style="margin-top:1rem;" onclick="openRequestModal()">
+                    <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+                    Purchase
+                </button>
+            </div>
+        </div>
     </div>
 
-    <div id="createAccountForm" style="display:none;">
-      <div class="form-group">
-        <label class="form-label">Full Name <span>*</span></label>
-        <input type="text" id="createName" placeholder="Your name" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Email <span>*</span></label>
-        <input type="email" id="createEmail" placeholder="your@email.com" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password <span>*</span></label>
-        <input type="password" id="createPassword" placeholder="••••••••" />
-      </div>
-      <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleCreateAccount()">
-        Create Account
-      </button>
-      <p class="signin-switch">
-        Already have an account?
-        <a href="#" onclick="switchToSignIn(); return false;">Sign in</a>
-      </p>
+    <!-- Checkout Modal -->
+    <div class="modal-overlay" id="requestModal" onclick="closeModalIfOutside(event)">
+        <div class="modal" id="modalBox">
+            <div class="modal-header">
+                <h2>Your Cart</h2>
+                <button class="close-btn" onclick="closeRequestModal()">&times;</button>
+            </div>
+            <p class="section-label">Submitted On</p>
+            <p id="submittedTime" style="font-size:0.9rem;margin-bottom:0.5rem;color:var(--muted);"></p>
+            <p class="section-label">Contact Information</p>
+            <div class="form-group"><label class="form-label">Name <span>*</span></label><input type="text" id="contactName" placeholder="Your name" /></div>
+            <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="contactEmail" placeholder="you@example.com" /></div>
+            <div class="form-group"><label class="form-label">Phone</label><input type="tel" id="contactPhone" placeholder="(555) 000-0000" /></div>
+            <p class="section-label">Order Details</p>
+            <div id="modalOrderDetails"></div>
+            <div class="modal-price-summary">
+                <div class="mps-title">Price Summary</div>
+                <div class="mps-row"><span>Quantity:</span><span id="modalQtyDisplay">x1</span></div>
+                <div class="mps-row"><span>Subtotal:</span><span id="modalSubtotal">$0.00</span></div>
+                <div class="mps-row total-row"><span>Estimated Total:</span><span class="amount" id="modalTotal">$0.00</span></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Custom Details / Notes</label>
+                <textarea id="customDetails" rows="3" placeholder="Any special instructions, colors, or requests..."></textarea>
+            </div>
+            <p class="section-label">Payment Information</p>
+            <div id="square-card-container" style="min-height:80px;margin-bottom:1rem;"></div>
+            <button class="btn-primary" onclick="submitQuote()">
+                <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+                Submit Order
+            </button>
+        </div>
     </div>
-  </div>
-</div>
 
+    <!-- Sign In Modal -->
+    <div class="modal-overlay" id="signInModal" onclick="closeSignInIfOutside(event)">
+        <div class="modal signin-modal" id="signInBox">
+            <div class="modal-header">
+                <div>
+                    <h2>Sign In to Your Account</h2>
+                    <p class="signin-subtitle">Access your saved cart and order history</p>
+                </div>
+                <button class="close-btn" onclick="closeSignIn()">&times;</button>
+            </div>
 
-<div class="toast" id="toast"></div>
+            <div id="signInForm">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="signInEmail" placeholder="your@email.com" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" id="signInPassword" placeholder="••••••••" />
+                </div>
+                <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleSignIn()">
+                    Sign In
+                </button>
+                <p class="signin-switch">
+                    Don't have an account?
+                    <a href="#" onclick="switchToCreateAccount(); return false;">Create one</a>
+                </p>
+            </div>
 
-<script src="app.js"></script>
+            <div id="createAccountForm" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label">Full Name <span>*</span></label>
+                    <input type="text" id="createName" placeholder="Your name" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email <span>*</span></label>
+                    <input type="email" id="createEmail" placeholder="your@email.com" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password <span>*</span></label>
+                    <input type="password" id="createPassword" placeholder="••••••••" />
+                </div>
+                <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleCreateAccount()">
+                    Create Account
+                </button>
+                <p class="signin-switch">
+                    Already have an account?
+                    <a href="#" onclick="switchToSignIn(); return false;">Sign in</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="app.js"></script>
 </body>
 </html>

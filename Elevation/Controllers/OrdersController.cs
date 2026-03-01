@@ -24,23 +24,24 @@ public class OrdersController : ControllerBase
 
         // Resolve recipient email — logged in user or guest
         string recipientEmail;
-        int resolvedUserId = dto.UserId;
+        int? resolvedUserId = null;
 
         if (dto.UserId > 0)
         {
             var user = await _context.Users.FindAsync(dto.UserId);
             if (user == null) return BadRequest("User does not exist.");
             recipientEmail = user.Email;
+            resolvedUserId = dto.UserId;
         }
         else if (!string.IsNullOrEmpty(dto.GuestEmail))
         {
             recipientEmail = dto.GuestEmail;
-            resolvedUserId = 0;
+            resolvedUserId = null; // Use null for guests
         }
         else
         {
             return BadRequest("Either a UserId or GuestEmail is required.");
-        }
+        };
 
         var order = new Order
         {

@@ -1,11 +1,11 @@
 ## Visual Studio Specific
 .vs/
 [Bb]in/
-[Obj]/
+[Oo]bj/
 *.user
 *.userosscache
 *.sln.docstates
-.vs
+
 ## .NET Specific
 out/
 publish/
@@ -13,12 +13,13 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
-
 *.mdf
 *.ldf
 *.sde
 
 ## User-Specific / Local Settings
+appsettings.json
+appsettings.Development.json
 appsettings.Local.json
 
 ## Elevation Project Specifics

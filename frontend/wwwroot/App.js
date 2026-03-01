@@ -1,6 +1,6 @@
 const API_BASE = 'http://localhost:5249';
 const SQUARE_APP_ID = 'sandbox-sq0idb-BwePK0oD1PR0SnDJLs3w5g';
-const SQUARE_LOCATION_ID = 'YOUR_SANDBOX_LOCATION_ID'; // Paste your Location ID from Square dashboard
+const SQUARE_LOCATION_ID = 'YOUR_SANDBOX_LOCATION_ID';
 
 let products = [];
 let cart = [];
@@ -18,6 +18,7 @@ async function init() {
         document.getElementById('productsGrid').innerHTML =
             '<div style="color:var(--muted);padding:2rem;">Could not connect to server. Please try again later.</div>';
     }
+    checkPaymentReturn();
 }
 
 
@@ -31,20 +32,20 @@ function renderProducts() {
     }
 
     grid.innerHTML = products.map(p => `
-    <div class="product-card" id="card-${p.id}">
-      <div class="product-name">${p.name}</div>
-      <div class="product-price">$${p.basePrice.toFixed(2)}</div>
-      <div class="product-unit">per unit (starting price)</div>
-      <button class="btn-add-quote" onclick="quickAddToQuote(${p.id})">
-        <svg viewBox="0 0 24 24">
-          <circle cx="9" cy="21" r="1"/>
-          <circle cx="20" cy="21" r="1"/>
-          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-        </svg>
-        Add to Cart
-      </button>
-    </div>
-  `).join('');
+        <div class="product-card" id="card-${p.id}">
+            <div class="product-name">${p.name}</div>
+            <div class="product-price">$${p.basePrice.toFixed(2)}</div>
+            <div class="product-unit">per unit (starting price)</div>
+            <button class="btn-add-quote" onclick="quickAddToQuote(${p.id})">
+                <svg viewBox="0 0 24 24">
+                    <circle cx="9" cy="21" r="1"/>
+                    <circle cx="20" cy="21" r="1"/>
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                </svg>
+                Add to Cart
+            </button>
+        </div>
+    `).join('');
 }
 
 function quickAddToQuote(productId) {
@@ -56,7 +57,10 @@ function quickAddToQuote(productId) {
         name: product.name,
         basePrice: product.basePrice,
         selectedOptions: [],
-        qty: 1
+        qty: 1,
+        imageData: null,
+        imageName: null,
+        imageFile: null
     });
 
     const card = document.getElementById('card-' + productId);
@@ -89,26 +93,49 @@ function renderCart() {
     }
 
     list.innerHTML = cart.map((item, i) => {
-        const unitPrice = item.basePrice + item.selectedOptions.reduce((s, o) => s + o.priceModifier, 0);
+        const unitPrice = item.basePrice + item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
         return `
-      <div class="quote-item">
-        <div class="quote-item-name">${item.name}</div>
-        <div class="quote-item-price-unit">$${unitPrice.toFixed(2)} per unit</div>
-        ${item.selectedOptions.length > 0 ? `
-          <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px;">
-            ${item.selectedOptions.map(o => `${o.optionName}: ${o.optionValue}`).join(' · ')}
-          </div>` : ''}
-        <div class="quote-item-row">
-          <div class="qty-wrap">
-            <span>Qty:</span>
-            <input class="qty-input" type="number" value="${item.qty}" min="1"
-                   onchange="updateQty(${i}, this.value)" />
-          </div>
-          <div class="quote-item-total">$${(unitPrice * item.qty).toFixed(2)}</div>
-        </div>
-        <button class="remove-btn" onclick="removeItem(${i})">✕</button>
-      </div>
-    `;
+            <div class="quote-item">
+                <div class="quote-item-name">${item.name}</div>
+                <div class="quote-item-price-unit">$${unitPrice.toFixed(2)} per unit</div>
+                ${item.selectedOptions.length > 0 ? `
+                    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px;">
+                        ${item.selectedOptions.map(o => `${o.optionName}: ${o.optionValue}`).join(' · ')}
+                    </div>` : ''}
+
+                <div class="item-image-area">
+                    ${item.imageData
+                ? `<div class="attached-image-preview">
+                               <img src="${item.imageData}" alt="Attached design" />
+                               <div class="attached-image-info">
+                                   <span class="attached-image-name">${item.imageName || 'Design file'}</span>
+                                   <button class="remove-img-btn" onclick="removeItemImage(${i})">✕ Remove</button>
+                               </div>
+                           </div>`
+                : `<label class="attach-image-label" for="img-input-${i}">
+                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                   <polyline points="17 8 12 3 7 8"/>
+                                   <line x1="12" y1="3" x2="12" y2="15"/>
+                               </svg>
+                               Attach Design File
+                           </label>
+                           <input type="file" id="img-input-${i}" accept="image/*,application/pdf"
+                               style="display:none" onchange="attachItemImage(${i}, this)" />`
+            }
+                </div>
+
+                <div class="quote-item-row">
+                    <div class="qty-wrap">
+                        <span>Qty:</span>
+                        <input class="qty-input" type="number" value="${item.qty}" min="1"
+                               onchange="updateQty(${i}, this.value)" />
+                    </div>
+                    <div class="quote-item-total">$${(unitPrice * item.qty).toFixed(2)}</div>
+                </div>
+                <button class="remove-btn" onclick="removeItem(${i})">✕</button>
+            </div>
+        `;
     }).join('');
 
     const subtotal = getCartSubtotal();
@@ -121,9 +148,34 @@ function renderCart() {
 
 function getCartSubtotal() {
     return cart.reduce((s, item) => {
-        const unitPrice = item.basePrice + item.selectedOptions.reduce((os, o) => os + o.priceModifier, 0);
+        const unitPrice = item.basePrice + item.selectedOptions.reduce((os, o) => os + (o.priceModifier || 0), 0);
         return s + unitPrice * item.qty;
     }, 0);
+}
+
+
+// --- IMAGE ATTACHMENT ---
+
+function attachItemImage(index, input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    cart[index].imageFile = file;
+    cart[index].imageName = file.name;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        cart[index].imageData = e.target.result;
+        renderCart();
+    };
+    reader.readAsDataURL(file);
+}
+
+function removeItemImage(index) {
+    cart[index].imageData = null;
+    cart[index].imageName = null;
+    cart[index].imageFile = null;
+    renderCart();
 }
 
 function updateQty(index, val) {
@@ -179,22 +231,29 @@ async function openRequestModal() {
         hour: 'numeric', minute: '2-digit', hour12: true,
     });
 
+    // Pre-fill contact info if logged in
+    if (currentUser) {
+        document.getElementById('contactName').value = currentUser.name;
+        document.getElementById('contactEmail').value = currentUser.email;
+    }
+
     const orderDiv = document.getElementById('modalOrderDetails');
     orderDiv.innerHTML = cart.map(item => {
-        const unitPrice = item.basePrice + item.selectedOptions.reduce((s, o) => s + o.priceModifier, 0);
+        const unitPrice = item.basePrice + item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
         return `
-      <div class="order-detail-card">
-        <div>
-          <div style="font-weight:700;">${item.name}</div>
-          ${item.selectedOptions.length > 0 ? `
-            <div style="font-size:0.8rem;color:var(--muted);">
-              ${item.selectedOptions.map(o => `${o.optionName}: ${o.optionValue}`).join(' · ')}
-            </div>` : ''}
-          <div class="order-detail-qty">Quantity: ${item.qty}</div>
-        </div>
-        <div style="font-weight:700;">$${(unitPrice * item.qty).toFixed(2)}</div>
-      </div>
-    `;
+            <div class="order-detail-card">
+                <div>
+                    <div style="font-weight:700;">${item.name}</div>
+                    ${item.selectedOptions.length > 0 ? `
+                        <div style="font-size:0.8rem;color:var(--muted);">
+                            ${item.selectedOptions.map(o => `${o.optionName}: ${o.optionValue}`).join(' · ')}
+                        </div>` : ''}
+                    <div class="order-detail-qty">Quantity: ${item.qty}</div>
+                    ${item.imageName ? `<div class="order-detail-file">📎 ${item.imageName}</div>` : ''}
+                </div>
+                <div style="font-weight:700;">$${(unitPrice * item.qty).toFixed(2)}</div>
+            </div>
+        `;
     }).join('');
 
     const subtotal = getCartSubtotal();
@@ -202,7 +261,7 @@ async function openRequestModal() {
 
     document.getElementById('modalSubtotal').textContent = `$${subtotal.toFixed(2)}`;
     document.getElementById('modalTotal').textContent = `$${subtotal.toFixed(2)}`;
-    document.getElementById('modalQtyDisplay').textContent = `×${totalItems}`;
+    document.getElementById('modalQtyDisplay').textContent = `×${totalItems} item${totalItems !== 1 ? 's' : ''}`;
 
     document.getElementById('requestModal').classList.add('show');
     document.body.style.overflow = 'hidden';
@@ -260,12 +319,29 @@ async function submitQuote() {
         return;
     }
 
-    const submitBtn = document.querySelector('#modalBox .btn-primary:last-of-type');
+    const submitBtn = document.querySelector('#modalBox .btn-primary');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Processing...';
 
     try {
-        // 1. Tokenize the card with Square
+        // 1. Upload any attached design files first
+        const fileIds = [];
+        for (const item of cart) {
+            if (item.imageFile) {
+                const formData = new FormData();
+                formData.append('file', item.imageFile);
+                const uploadRes = await fetch(`${API_BASE}/api/Files/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                if (uploadRes.ok) {
+                    const uploaded = await uploadRes.json();
+                    fileIds.push(uploaded.fileId);
+                }
+            }
+        }
+
+        // 2. Tokenize the card with Square
         const tokenResult = await squareCard.tokenize();
         if (tokenResult.status !== 'OK') {
             const errs = tokenResult.errors?.map(e => e.message).join(', ') || 'Card error.';
@@ -273,14 +349,13 @@ async function submitQuote() {
             return;
         }
 
-        const sourceId = tokenResult.token;
         const amountCents = Math.round(getCartSubtotal() * 100);
 
-        // 2. Send token to backend to charge
+        // 3. Send token to backend to charge
         const paymentRes = await fetch(`${API_BASE}/api/Payments/process`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceId, amountCents })
+            body: JSON.stringify({ sourceId: tokenResult.token, amountCents })
         });
 
         if (!paymentRes.ok) {
@@ -291,12 +366,12 @@ async function submitQuote() {
 
         const payment = await paymentRes.json();
 
-        // 3. Create the order in our system
+        // 4. Create the order in our system
         const orderPayload = {
             userId: currentUser?.id ?? 0,
             guestEmail: currentUser ? '' : email,
             squarePaymentId: payment.paymentId,
-            fileIds: [],
+            fileIds,
             items: cart.map(item => ({
                 productId: item.productId,
                 quantity: item.qty,
@@ -318,7 +393,6 @@ async function submitQuote() {
 
         const order = await orderRes.json();
 
-        // 4. Success
         closeRequestModal();
         cart = [];
         updateBadge();
@@ -330,6 +404,19 @@ async function submitQuote() {
     } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Order';
+    }
+}
+
+// --- HANDLE RETURN FROM SQUARE PAYMENT LINK (if ever used) ---
+function checkPaymentReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('order');
+    const paid = params.get('paid');
+    if (orderId && paid === 'true') {
+        cart = [];
+        updateBadge();
+        showToast(`Order #${orderId} placed successfully! ✓`);
+        window.history.replaceState({}, document.title, window.location.pathname);
     }
 }
 
@@ -429,11 +516,12 @@ async function handleCreateAccount() {
 }
 
 function updateNavUser() {
-    const label = document.getElementById('navUserLabel');
-    if (currentUser) {
-        label.textContent = currentUser.name;
-    } else {
-        label.textContent = 'Sign In';
+    // Find the sign in button and update its text node
+    const signInBtn = document.querySelector('.nav-btn[onclick="openSignIn()"]');
+    if (signInBtn && currentUser) {
+        // Replace just the text, keep the SVG
+        const textNode = [...signInBtn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+        if (textNode) textNode.textContent = ` ${currentUser.name}`;
     }
 }
 
@@ -450,16 +538,16 @@ function toggleTheme() {
     } else {
         html.dataset.theme = 'dark';
         icon.innerHTML = `
-      <circle cx="12" cy="12" r="5"/>
-      <line x1="12" y1="1"  x2="12" y2="3"/>
-      <line x1="12" y1="21" x2="12" y2="23"/>
-      <line x1="4.22"  y1="4.22"  x2="5.64"  y2="5.64"/>
-      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-      <line x1="1"  y1="12" x2="3"  y2="12"/>
-      <line x1="21" y1="12" x2="23" y2="12"/>
-      <line x1="4.22"  y1="19.78" x2="5.64"  y2="18.36"/>
-      <line x1="18.36" y1="5.64"  x2="19.78" y2="4.22"/>
-    `;
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1"  x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22"  y1="4.22"  x2="5.64"  y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1"  y1="12" x2="3"  y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22"  y1="19.78" x2="5.64"  y2="18.36"/>
+            <line x1="18.36" y1="5.64"  x2="19.78" y2="4.22"/>
+        `;
     }
 }
 
