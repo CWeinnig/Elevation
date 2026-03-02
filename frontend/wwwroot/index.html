@@ -179,6 +179,34 @@
         </div>
     </div>
 
+    <!-- Account Modal -->
+    <div class="modal-overlay" id="accountModal" onclick="closeAccountIfOutside(event)">
+        <div class="modal" id="accountBox">
+            <div class="modal-header">
+                <div>
+                    <h2>Your Account</h2>
+                    <p class="signin-subtitle">Profile and order history</p>
+                </div>
+                <button class="close-btn" onclick="closeAccount()">&times;</button>
+            </div>
+
+            <div style="margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                <div>
+                    <div style="font-size:0.9rem;color:var(--muted)">Signed in as</div>
+                    <div style="font-weight:700;margin-top:0.25rem;" id="accountEmail">—</div>
+                </div>
+                <div>
+                    <button class="btn-ghost" onclick="signOut()" style="font-size:0.85rem;padding:6px 10px;border-radius:8px;">Sign out</button>
+                </div>
+            </div>
+
+            <h3 style="margin-top:0.5rem;margin-bottom:0.5rem;">Recent Orders</h3>
+            <div id="accountOrdersList">
+                <div style="color:var(--muted);padding:1rem;">No orders to show.</div>
+            </div>
+        </div>
+    </div>
+
     <div class="toast" id="toast"></div>
 
     <script src="app.js"></script>

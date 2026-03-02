@@ -18,6 +18,7 @@ async function init() {
         document.getElementById('productsGrid').innerHTML =
             '<div style="color:var(--muted);padding:2rem;">Could not connect to server. Please try again later.</div>';
     }
+    loadCurrentUserFromStorage();
     checkPaymentReturn();
 }
 
@@ -424,10 +425,7 @@ function checkPaymentReturn() {
 // --- SIGN IN / REGISTER ---
 
 function openSignIn() {
-    if (currentUser) {
-        showToast(`Signed in as ${currentUser.name}`);
-        return;
-    }
+    if (currentUser) { openAccount(); return; }
     switchToSignIn();
     document.getElementById('signInModal').classList.add('show');
     document.body.style.overflow = 'hidden';
@@ -479,6 +477,7 @@ async function handleSignIn() {
         if (!res.ok) throw new Error();
 
         currentUser = await res.json();
+        try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch {}
         closeSignIn();
         updateNavUser();
         showToast(`Welcome back, ${currentUser.name}!`);
@@ -507,6 +506,7 @@ async function handleCreateAccount() {
         if (!res.ok) throw new Error();
 
         currentUser = await res.json();
+        try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch {}
         closeSignIn();
         updateNavUser();
         showToast(`Account created! Welcome, ${currentUser.name}!`);
@@ -523,6 +523,84 @@ function updateNavUser() {
         const textNode = [...signInBtn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
         if (textNode) textNode.textContent = ` ${currentUser.name}`;
     }
+}
+
+function loadCurrentUserFromStorage() {
+    try {
+        const raw = localStorage.getItem('currentUser');
+        if (raw) {
+            currentUser = JSON.parse(raw);
+            updateNavUser();
+        }
+    } catch (e) {
+        console.warn('Could not load currentUser from storage', e);
+    }
+}
+
+// --- ACCOUNT OVERLAY ---
+async function openAccount() {
+    if (!currentUser) {
+        switchToSignIn();
+        document.getElementById('signInModal').classList.add('show');
+        document.body.style.overflow = 'hidden';
+        return;
+    }
+
+    document.getElementById('accountEmail').textContent = currentUser.email;
+    const list = document.getElementById('accountOrdersList');
+    list.innerHTML = '<div style="padding:1rem;color:var(--muted);">Loading orders...</div>';
+
+    try {
+        const res = await fetch(`${API_BASE}/api/Orders/user/${currentUser.id}`);
+        if (!res.ok) throw new Error('Failed to fetch orders');
+        const orders = await res.json();
+        renderAccountOrders(orders);
+    } catch (e) {
+        list.innerHTML = `<div style="padding:1rem;color:var(--muted);">Could not load orders.</div>`;
+    }
+
+    document.getElementById('accountModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeAccount() {
+    document.getElementById('accountModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+function closeAccountIfOutside(e) {
+    if (e.target === document.getElementById('accountModal')) closeAccount();
+}
+
+function renderAccountOrders(orders) {
+    const list = document.getElementById('accountOrdersList');
+    if (!orders || orders.length === 0) {
+        list.innerHTML = '<div style="color:var(--muted);padding:1rem;">No orders to show.</div>';
+        return;
+    }
+
+    list.innerHTML = orders.map(o => `
+        <div class="order-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-weight:700;">Order #${o.id}</div>
+                    <div style="font-size:0.85rem;color:var(--muted);">${new Date(o.createdAt).toLocaleString()}</div>
+                </div>
+                <div style="font-weight:700;color:var(--accent);">$${o.totalPrice.toFixed(2)}</div>
+            </div>
+            <div style="margin-top:0.5rem;font-size:0.9rem;">
+                ${o.items.map(it => `<div style="margin-bottom:6px;">${it.quantity}× ${it.productName} <span style="color:var(--muted);">— $${(it.unitPrice * it.quantity).toFixed(2)}</span></div>`).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function signOut() {
+    try { localStorage.removeItem('currentUser'); } catch {}
+    currentUser = null;
+    updateNavUser();
+    closeAccount();
+    showToast('Signed out');
 }
 
 
