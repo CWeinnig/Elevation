@@ -22,7 +22,9 @@ public class OrdersController : ControllerBase
         if (string.IsNullOrEmpty(dto.SquarePaymentId))
             return BadRequest("Payment verification failed: Missing SquarePaymentId.");
 
-        // Resolve recipient email — logged in user or guest
+        // ── Validate everything BEFORE writing anything to the database ──
+
+        // 1. Resolve recipient
         string recipientEmail;
         int? resolvedUserId = null;
 
@@ -36,29 +38,33 @@ public class OrdersController : ControllerBase
         else if (!string.IsNullOrEmpty(dto.GuestEmail))
         {
             recipientEmail = dto.GuestEmail;
-            resolvedUserId = null; // Use null for guests
         }
         else
         {
             return BadRequest("Either a UserId or GuestEmail is required.");
-        };
+        }
 
-        var order = new Order
+        // 2. Validate all files upfront — before any SaveChanges
+        var filesToAttach = new List<UploadedFile>();
+        foreach (var fileId in dto.FileIds)
         {
-            UserId = resolvedUserId,
-            SquarePaymentId = dto.SquarePaymentId,
-            Status = "Paid",
-            CreatedAt = DateTime.UtcNow,
-            Items = new List<OrderItem>(),
-            Notifications = new List<Notification>()
-        };
+            var file = await _context.UploadedFiles.FindAsync(fileId);
+            if (file == null)
+                return BadRequest($"File ID {fileId} not found.");
+            if (file.OrderId.HasValue)
+                return BadRequest($"File ID {fileId} is already attached to an order.");
+            filesToAttach.Add(file);
+        }
 
+        // 3. Validate all products and options upfront
+        var orderItems = new List<OrderItem>();
         decimal calculatedTotal = 0;
 
         foreach (var itemDto in dto.Items)
         {
             var dbProduct = await _context.Products.FindAsync(itemDto.ProductId);
-            if (dbProduct == null) return BadRequest($"Product ID {itemDto.ProductId} not found.");
+            if (dbProduct == null)
+                return BadRequest($"Product ID {itemDto.ProductId} not found.");
 
             decimal itemCost = dbProduct.BasePrice;
             var orderOptions = new List<OrderOption>();
@@ -66,7 +72,8 @@ public class OrdersController : ControllerBase
             foreach (var optDto in itemDto.Options)
             {
                 var dbOption = await _context.ProductOptions.FindAsync(optDto.ProductOptionId);
-                if (dbOption == null) return BadRequest($"ProductOption ID {optDto.ProductOptionId} not found.");
+                if (dbOption == null)
+                    return BadRequest($"ProductOption ID {optDto.ProductOptionId} not found.");
                 if (dbOption.ProductId != itemDto.ProductId)
                     return BadRequest($"ProductOption {optDto.ProductOptionId} does not belong to Product {itemDto.ProductId}.");
 
@@ -81,7 +88,7 @@ public class OrdersController : ControllerBase
 
             calculatedTotal += itemCost * itemDto.Quantity;
 
-            order.Items.Add(new OrderItem
+            orderItems.Add(new OrderItem
             {
                 ProductId = itemDto.ProductId,
                 Quantity = itemDto.Quantity,
@@ -90,25 +97,38 @@ public class OrdersController : ControllerBase
             });
         }
 
-        order.TotalPrice = calculatedTotal;
+        // ── All validation passed — now write to the database ──
 
+        var order = new Order
+        {
+            UserId = resolvedUserId,
+            SquarePaymentId = dto.SquarePaymentId,
+            Status = "Paid",
+            TotalPrice = calculatedTotal,
+            CreatedAt = DateTime.UtcNow,
+            Items = orderItems,
+            Notifications = new List<Notification>(),
+            UploadedFiles = new List<UploadedFile>()
+        };
+
+        _context.Orders.Add(order);
+
+        // SaveChanges here so order.Id is populated before we set file.OrderId
+        // and before creating the notification with a valid OrderId.
+        await _context.SaveChangesAsync();
+
+        // Attach files now that order.Id exists
+        foreach (var file in filesToAttach)
+            file.OrderId = order.Id;
+
+        // Create confirmation notification with the real order.Id
         order.Notifications.Add(new Notification
         {
+            OrderId = order.Id,
             Type = "Email",
             Recipient = recipientEmail,
             SentAt = DateTime.UtcNow
         });
-
-        _context.Orders.Add(order);
-        await _context.SaveChangesAsync();
-
-        foreach (var fileId in dto.FileIds)
-        {
-            var file = await _context.UploadedFiles.FindAsync(fileId);
-            if (file == null) return BadRequest($"File ID {fileId} not found.");
-            if (file.OrderId.HasValue) return BadRequest($"File ID {fileId} is already attached to an order.");
-            file.OrderId = order.Id;
-        }
 
         await _context.SaveChangesAsync();
 
@@ -148,14 +168,25 @@ public class OrdersController : ControllerBase
 
         if (dto.NewStatus == "Completed")
         {
-            var user = await _context.Users.FindAsync(order.UserId);
-            if (user != null)
+            // Notify the right recipient: registered user or guest
+            string? recipient = null;
+            if (order.UserId.HasValue)
+            {
+                var user = await _context.Users.FindAsync(order.UserId.Value);
+                recipient = user?.Email;
+            }
+            else if (!string.IsNullOrEmpty(order.GuestEmail))
+            {
+                recipient = order.GuestEmail;
+            }
+
+            if (!string.IsNullOrEmpty(recipient))
             {
                 _context.Notifications.Add(new Notification
                 {
                     OrderId = order.Id,
                     Type = "Email - Order Complete",
-                    Recipient = user.Email,
+                    Recipient = recipient,
                     SentAt = DateTime.UtcNow
                 });
             }

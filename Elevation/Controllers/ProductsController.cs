@@ -21,21 +21,10 @@ public class ProductsController : ControllerBase
     {
         return await _context.Products
             .Include(p => p.Options)
+            .Include(p => p.PriceTiers)
             .Where(p => p.IsActive)
-            .Select(p => new ProductDto
-            {
-                Id = p.Id,
-                Name = p.Name,
-                Description = p.Description,
-                BasePrice = p.BasePrice,
-                Options = p.Options!.Select(o => new ProductOptionDto
-                {
-                    Id = o.Id,
-                    OptionName = o.OptionName,
-                    OptionValue = o.OptionValue,
-                    PriceModifier = o.PriceModifier
-                }).ToList()
-            })
+            .OrderBy(p => p.Name)
+            .Select(p => MapToDto(p))
             .ToListAsync();
     }
 
@@ -44,24 +33,11 @@ public class ProductsController : ControllerBase
     {
         var product = await _context.Products
             .Include(p => p.Options)
+            .Include(p => p.PriceTiers)
             .FirstOrDefaultAsync(p => p.Id == id);
 
         if (product == null) return NotFound();
-
-        return new ProductDto
-        {
-            Id = product.Id,
-            Name = product.Name,
-            Description = product.Description,
-            BasePrice = product.BasePrice,
-            Options = product.Options!.Select(o => new ProductOptionDto
-            {
-                Id = o.Id,
-                OptionName = o.OptionName,
-                OptionValue = o.OptionValue,
-                PriceModifier = o.PriceModifier
-            }).ToList()
-        };
+        return MapToDto(product);
     }
 
     [HttpPost]
@@ -72,19 +48,26 @@ public class ProductsController : ControllerBase
             Name = dto.Name,
             Description = dto.Description,
             BasePrice = dto.BasePrice,
+            MinPrice = dto.MinPrice,
+            MaxPrice = dto.MaxPrice,
             IsActive = true,
             Options = dto.Options.Select(o => new ProductOption
             {
                 OptionName = o.OptionName,
                 OptionValue = o.OptionValue,
                 PriceModifier = o.PriceModifier
+            }).ToList(),
+            PriceTiers = dto.PriceTiers.Select(t => new PriceTier
+            {
+                MinQty = t.MinQty,
+                Price = t.Price,
+                Label = t.Label
             }).ToList()
         };
 
         _context.Products.Add(product);
         await _context.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
+        return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, MapToDto(product));
     }
 
     [HttpPut("{id}")]
@@ -92,6 +75,7 @@ public class ProductsController : ControllerBase
     {
         var product = await _context.Products
             .Include(p => p.Options)
+            .Include(p => p.PriceTiers)
             .FirstOrDefaultAsync(p => p.Id == id);
 
         if (product == null) return NotFound();
@@ -99,18 +83,29 @@ public class ProductsController : ControllerBase
         product.Name = dto.Name;
         product.Description = dto.Description;
         product.BasePrice = dto.BasePrice;
+        product.MinPrice = dto.MinPrice;
+        product.MaxPrice = dto.MaxPrice;
         product.IsActive = dto.IsActive;
 
+        // Replace options
         product.Options!.Clear();
         foreach (var o in dto.Options)
-        {
             product.Options.Add(new ProductOption
             {
                 OptionName = o.OptionName,
                 OptionValue = o.OptionValue,
                 PriceModifier = o.PriceModifier
             });
-        }
+
+        // Replace price tiers
+        product.PriceTiers!.Clear();
+        foreach (var t in dto.PriceTiers)
+            product.PriceTiers.Add(new PriceTier
+            {
+                MinQty = t.MinQty,
+                Price = t.Price,
+                Label = t.Label
+            });
 
         await _context.SaveChangesAsync();
         return NoContent();
@@ -121,9 +116,32 @@ public class ProductsController : ControllerBase
     {
         var product = await _context.Products.FindAsync(id);
         if (product == null) return NotFound();
-
         product.IsActive = false;
         await _context.SaveChangesAsync();
         return NoContent();
     }
+
+    private static ProductDto MapToDto(Product p) => new ProductDto
+    {
+        Id = p.Id,
+        Name = p.Name,
+        Description = p.Description,
+        BasePrice = p.BasePrice,
+        MinPrice = p.MinPrice,
+        MaxPrice = p.MaxPrice,
+        Options = p.Options?.Select(o => new ProductOptionDto
+        {
+            Id = o.Id,
+            OptionName = o.OptionName,
+            OptionValue = o.OptionValue,
+            PriceModifier = o.PriceModifier
+        }).ToList() ?? new(),
+        PriceTiers = p.PriceTiers?.OrderBy(t => t.MinQty).Select(t => new PriceTierDto
+        {
+            Id = t.Id,
+            MinQty = t.MinQty,
+            Price = t.Price,
+            Label = t.Label
+        }).ToList() ?? new()
+    };
 }

@@ -8,6 +8,7 @@ public class AppDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<Product> Products { get; set; }
     public DbSet<ProductOption> ProductOptions { get; set; }
+    public DbSet<PriceTier> PriceTiers { get; set; }
     public DbSet<Order> Orders { get; set; }
     public DbSet<OrderItem> OrderItems { get; set; }
     public DbSet<OrderOption> OrderOptions { get; set; }
@@ -19,7 +20,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
 
         modelBuilder.Entity<Product>().Property(p => p.BasePrice).HasPrecision(18, 2);
+        modelBuilder.Entity<Product>().Property(p => p.MinPrice).HasPrecision(18, 2);
+        modelBuilder.Entity<Product>().Property(p => p.MaxPrice).HasPrecision(18, 2);
+
         modelBuilder.Entity<ProductOption>().Property(p => p.PriceModifier).HasPrecision(18, 2);
+        modelBuilder.Entity<PriceTier>().Property(p => p.Price).HasPrecision(18, 2);
 
         modelBuilder.Entity<Order>().Property(o => o.TotalPrice).HasPrecision(18, 2);
         modelBuilder.Entity<OrderItem>().Property(oi => oi.UnitPrice).HasPrecision(18, 2);
@@ -27,5 +32,4 @@ public class AppDbContext : DbContext
 
         base.OnModelCreating(modelBuilder);
     }
-
 }

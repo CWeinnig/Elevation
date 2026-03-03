@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
-using Elevation.Data;
 
 namespace Elevation.Controllers;
 
@@ -10,77 +9,60 @@ namespace Elevation.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IConfiguration _config;
 
-    public AdminController(AppDbContext context)
+    public AdminController(AppDbContext context, IConfiguration config)
     {
         _context = context;
+        _config = config;
     }
 
     // POST api/admin/login
+    // Credentials are read from appsettings.json: Admin:Username / Admin:Password
     [HttpPost("login")]
     public IActionResult Login([FromBody] AdminLoginRequest req)
     {
-        if (req.Username == "admin" && req.Password == "123")
-            return Ok(new { success = true, token = "admin-token-djed" });
+        var expectedUser = _config["Admin:Username"];
+        var expectedPass = _config["Admin:Password"];
 
-        return Unauthorized(new { message = "Invalid credentials" });
+        if (string.IsNullOrEmpty(expectedUser) || string.IsNullOrEmpty(expectedPass))
+            return StatusCode(500, new { message = "Admin credentials are not configured on the server." });
+
+        if (req.Username != expectedUser || req.Password != expectedPass)
+            return Unauthorized(new { message = "Invalid credentials." });
+
+        // Static token is sufficient for a small internal admin panel.
+        // Replace with JWT if you need expiry / multi-admin support later.
+        var token = _config["Admin:Token"] ?? "admin-token-djed";
+        return Ok(new { success = true, token });
     }
 
-    // GET api/admin/products
+    // GET api/admin/products  — kept for potential future admin-only reporting.
+    // The frontend now uses GET /api/Products for the admin list so options are always included.
     [HttpGet("products")]
-    public async Task<ActionResult<IEnumerable<Product>>> GetProducts()
+    public async Task<ActionResult<IEnumerable<object>>> GetProducts()
     {
         var products = await _context.Products
             .Include(p => p.Options)
+            .OrderBy(p => p.Name)
+            .Select(p => new
+            {
+                p.Id,
+                p.Name,
+                p.Description,
+                p.BasePrice,
+                p.IsActive,
+                Options = p.Options!.Select(o => new
+                {
+                    o.Id,
+                    o.OptionName,
+                    o.OptionValue,
+                    o.PriceModifier
+                })
+            })
             .ToListAsync();
+
         return Ok(products);
-    }
-
-    // POST api/admin/products
-    [HttpPost("products")]
-    public async Task<ActionResult<Product>> CreateProduct([FromBody] AdminProductDto dto)
-    {
-        if (string.IsNullOrWhiteSpace(dto.Name))
-            return BadRequest(new { message = "Product name is required" });
-
-        var product = new Product
-        {
-            Name        = dto.Name,
-            Description = dto.Description,
-            BasePrice   = dto.BasePrice,
-            IsActive    = true
-        };
-
-        _context.Products.Add(product);
-        await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetProducts), new { id = product.Id }, product);
-    }
-
-    // PUT api/admin/products/{id}
-    [HttpPut("products/{id}")]
-    public async Task<ActionResult<Product>> UpdateProduct(int id, [FromBody] AdminProductDto dto)
-    {
-        var product = await _context.Products.FindAsync(id);
-        if (product == null) return NotFound(new { message = "Product not found" });
-
-        product.Name        = dto.Name;
-        product.Description = dto.Description;
-        product.BasePrice   = dto.BasePrice;
-
-        await _context.SaveChangesAsync();
-        return Ok(product);
-    }
-
-    // DELETE api/admin/products/{id}
-    [HttpDelete("products/{id}")]
-    public async Task<IActionResult> DeleteProduct(int id)
-    {
-        var product = await _context.Products.FindAsync(id);
-        if (product == null) return NotFound(new { message = "Product not found" });
-
-        _context.Products.Remove(product);
-        await _context.SaveChangesAsync();
-        return NoContent();
     }
 }
 
@@ -88,11 +70,4 @@ public class AdminLoginRequest
 {
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
-}
-
-public class AdminProductDto
-{
-    public string Name        { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public decimal BasePrice  { get; set; }
 }

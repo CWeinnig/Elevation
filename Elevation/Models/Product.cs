@@ -9,6 +9,9 @@ public class Product
     public string Description { get; set; }
     public decimal BasePrice { get; set; }
     public bool IsActive { get; set; }
+    public decimal? MinPrice { get; set; }
+    public decimal? MaxPrice { get; set; }
     [JsonIgnore]
     public ICollection<ProductOption>? Options { get; set; }
+    public ICollection<PriceTier> PriceTiers { get; set; } = new List<PriceTier>();
 }

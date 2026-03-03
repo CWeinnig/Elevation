@@ -1,4 +1,6 @@
 ﻿namespace Elevation.DTOs;
+using System;
+using System.Collections.Generic;
 
 // Note: TotalPrice is NOT here on purpose. The server calculates it.
 // UserId is optional — 0 means guest checkout, identified by GuestEmail instead.
