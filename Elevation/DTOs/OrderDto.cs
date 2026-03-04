@@ -2,14 +2,13 @@
 using System;
 using System.Collections.Generic;
 
-// Note: TotalPrice is NOT here on purpose. The server calculates it.
-// UserId is optional — 0 means guest checkout, identified by GuestEmail instead.
-
 public class CreateOrderDto
 {
     public int UserId { get; set; }
     public string GuestEmail { get; set; } = string.Empty;
     public string SquarePaymentId { get; set; } = string.Empty;
+    public string DesignNotes { get; set; } = string.Empty;
+    public bool IsQuoteRequest { get; set; } = false;
     public List<CreateOrderItemDto> Items { get; set; } = new();
     public List<int> FileIds { get; set; } = new();
 }
@@ -30,12 +29,15 @@ public class OrderDto
 {
     public int Id { get; set; }
     public int UserId { get; set; }
+    public string GuestEmail { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public decimal TotalPrice { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string DesignNotes { get; set; } = string.Empty;
+    public bool IsQuoteRequest { get; set; }
+    // PaymentToken intentionally excluded from standard responses
     public List<OrderItemDto> Items { get; set; } = new();
     public List<UploadedFileDto> UploadedFiles { get; set; } = new();
-    // SquarePaymentId intentionally excluded
 }
 
 public class OrderItemDto
@@ -58,4 +60,9 @@ public class OrderOptionDto
 public class UpdateOrderStatusDto
 {
     public string NewStatus { get; set; } = string.Empty;
+}
+
+public class UploadProofDto
+{
+    public string AdminNotes { get; set; } = string.Empty;
 }

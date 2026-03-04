@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
 using Elevation.DTOs;
+using BCrypt.Net;
 
 namespace Elevation.Controllers;
 
@@ -26,14 +27,13 @@ public class UsersController : ControllerBase
         {
             Name = dto.Name,
             Email = dto.Email,
-            PasswordHash = dto.Password,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             Role = "Customer",
             CreatedAt = DateTime.UtcNow
         };
 
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
-
         return CreatedAtAction(nameof(GetUser), new { id = user.Id }, MapToDto(user));
     }
 
@@ -41,9 +41,10 @@ public class UsersController : ControllerBase
     public async Task<ActionResult<UserDto>> Login([FromBody] LoginRequest request)
     {
         var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Email == request.Email && u.PasswordHash == request.Password);
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
 
-        if (user == null) return Unauthorized("Invalid email or password.");
+        if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            return Unauthorized("Invalid email or password.");
 
         return Ok(MapToDto(user));
     }
@@ -54,6 +55,32 @@ public class UsersController : ControllerBase
         var user = await _context.Users.FindAsync(id);
         if (user == null) return NotFound();
         return MapToDto(user);
+    }
+
+    // PUT /api/Users/{id}
+    // Requires current password to confirm identity before any change.
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserDto dto)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null) return NotFound();
+
+        // Always require current password
+        if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+            return Unauthorized("Current password is incorrect.");
+
+        if (!string.IsNullOrWhiteSpace(dto.NewEmail) && dto.NewEmail != user.Email)
+        {
+            if (await _context.Users.AnyAsync(u => u.Email == dto.NewEmail && u.Id != id))
+                return Conflict("That email is already in use.");
+            user.Email = dto.NewEmail.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.NewPassword))
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+
+        await _context.SaveChangesAsync();
+        return Ok(MapToDto(user));
     }
 
     private static UserDto MapToDto(User user) => new UserDto
