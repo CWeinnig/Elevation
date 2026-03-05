@@ -14,6 +14,9 @@ let adminActiveId = null;
 let adminIsEditMode = false;
 let adminDeleteTargetId = null;
 
+// Submitted quotes history (persisted to localStorage)
+let submittedQuotes = [];
+
 // Product Detail Modal state
 let pdCurrentProduct = null;
 let pdCurrentQty = 1;
@@ -34,6 +37,8 @@ async function init() {
             '<div style="color:var(--muted);padding:2rem;grid-column:1/-1;">Could not connect to server. Please try again later.</div>';
     }
     loadSessionFromStorage();
+    loadQuotesFromStorage();
+    updateQuotesBadge();
     checkPaymentReturn();
 }
 
@@ -169,6 +174,23 @@ async function pdSubmitQuote() {
             });
         } catch { /* swallow network error — server may not have this endpoint yet */ }
 
+        // Save to local history
+        const record = {
+            id:             Date.now(),
+            productId:      pdCurrentProduct.id,
+            productName:    pdCurrentProduct.name,
+            quantity:       pdCurrentQty,
+            name,
+            email,
+            notes,
+            estimatedPrice: pdCurrentProduct.basePrice * pdCurrentQty,
+            submittedAt:    new Date().toISOString(),
+            status:         'Pending'
+        };
+        submittedQuotes.unshift(record);
+        saveQuotesToStorage();
+        updateQuotesBadge();
+
         closeProductDetail();
         showQuoteSuccess(name, pdCurrentProduct.name);
     } finally {
@@ -187,6 +209,91 @@ function showQuoteSuccess(name, productName) {
 function closeQuoteSuccess() {
     document.getElementById('quoteSuccessModal').classList.remove('show');
     document.body.style.overflow = '';
+}
+
+/* ═══════════════════════════════════════
+   QUOTES HISTORY PANEL
+═══════════════════════════════════════ */
+
+function saveQuotesToStorage() {
+    try { localStorage.setItem('submittedQuotes', JSON.stringify(submittedQuotes)); } catch {}
+}
+
+function loadQuotesFromStorage() {
+    try {
+        const raw = localStorage.getItem('submittedQuotes');
+        if (raw) submittedQuotes = JSON.parse(raw);
+    } catch {}
+}
+
+function updateQuotesBadge() {
+    const badge = document.getElementById('quoteHistoryBadge');
+    if (!badge) return;
+    badge.textContent = submittedQuotes.length;
+    badge.style.display = submittedQuotes.length > 0 ? 'inline-flex' : 'none';
+}
+
+function openQuotesHistory() {
+    renderQuotesHistory();
+    document.getElementById('quotesHistoryOverlay').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeQuotesHistory() {
+    document.getElementById('quotesHistoryOverlay').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+function closeQuotesHistoryIfOutside(e) {
+    if (e.target === document.getElementById('quotesHistoryOverlay')) closeQuotesHistory();
+}
+
+function renderQuotesHistory() {
+    const list = document.getElementById('quotesHistoryList');
+    if (submittedQuotes.length === 0) {
+        list.innerHTML = `
+            <div class="empty-quote" style="padding:3rem 1rem;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="opacity:0.3;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;">
+                    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+                    <rect x="9" y="3" width="6" height="4" rx="1"/>
+                    <path d="M9 12h6M9 16h4"/>
+                </svg>
+                No quote requests yet.<br>
+                <span style="font-size:0.82rem;">Request a quote on any product to see it here.</span>
+            </div>`;
+        return;
+    }
+
+    list.innerHTML = submittedQuotes.map((q, i) => {
+        const date = new Date(q.submittedAt).toLocaleString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric',
+            hour: 'numeric', minute: '2-digit', hour12: true
+        });
+        const statusColor = q.status === 'Pending' ? '#f59e0b' : q.status === 'Reviewed' ? '#7c3aed' : '#10b981';
+        return `
+            <div class="qh-card" style="animation-delay:${i * 0.04}s">
+                <div class="qh-card-top">
+                    <div class="qh-product-name">${escHtml(q.productName)}</div>
+                    <span class="qh-status-badge" style="background:${statusColor}22;color:${statusColor};">${escHtml(q.status)}</span>
+                </div>
+                <div class="qh-meta">
+                    <span>Qty: <strong>${q.quantity}</strong></span>
+                    <span style="color:var(--accent);font-weight:700;">Est. $${q.estimatedPrice.toFixed(2)}</span>
+                </div>
+                ${q.notes ? `<div class="qh-notes">"${escHtml(q.notes)}"</div>` : ''}
+                <div class="qh-footer">
+                    <span class="qh-date">${date}</span>
+                    <button class="qh-remove-btn" onclick="removeQuote(${q.id})">Remove</button>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function removeQuote(id) {
+    submittedQuotes = submittedQuotes.filter(q => q.id !== id);
+    saveQuotesToStorage();
+    updateQuotesBadge();
+    renderQuotesHistory();
 }
 
 // ── Upload & Add to Cart ──

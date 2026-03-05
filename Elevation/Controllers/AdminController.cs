@@ -17,8 +17,7 @@ public class AdminController : ControllerBase
         _config = config;
     }
 
-    // POST api/admin/login
-    // Credentials are read from appsettings.json: Admin:Username / Admin:Password
+   
     [HttpPost("login")]
     public IActionResult Login([FromBody] AdminLoginRequest req)
     {
@@ -31,14 +30,11 @@ public class AdminController : ControllerBase
         if (req.Username != expectedUser || req.Password != expectedPass)
             return Unauthorized(new { message = "Invalid credentials." });
 
-        // Static token is sufficient for a small internal admin panel.
-        // Replace with JWT if you need expiry / multi-admin support later.
         var token = _config["Admin:Token"] ?? "admin-token-djed";
         return Ok(new { success = true, token });
     }
 
-    // GET api/admin/products  — kept for potential future admin-only reporting.
-    // The frontend now uses GET /api/Products for the admin list so options are always included.
+    
     [HttpGet("products")]
     public async Task<ActionResult<IEnumerable<object>>> GetProducts()
     {
@@ -64,10 +60,66 @@ public class AdminController : ControllerBase
 
         return Ok(products);
     }
+
+    
+    [HttpPost("products")]
+    public async Task<ActionResult<object>> CreateProduct([FromBody] AdminProductDto dto)
+    {
+        var product = new Product
+        {
+            Name        = dto.Name,
+            Description = dto.Description,
+            BasePrice   = dto.BasePrice,
+            IsActive    = true
+        };
+
+        _context.Products.Add(product);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { product.Id, product.Name, product.Description, product.BasePrice, product.IsActive });
+    }
+
+    
+    [HttpPut("products/{id}")]
+    public async Task<IActionResult> UpdateProduct(int id, [FromBody] AdminProductDto dto)
+    {
+        var product = await _context.Products.FindAsync(id);
+        if (product is null) return NotFound();
+
+        product.Name        = dto.Name;
+        product.Description = dto.Description;
+        product.BasePrice   = dto.BasePrice;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { product.Id, product.Name, product.Description, product.BasePrice, product.IsActive });
+    }
+
+    
+    [HttpDelete("products/{id}")]
+    public async Task<IActionResult> DeleteProduct(int id)
+    {
+        var product = await _context.Products.FindAsync(id);
+        if (product is null) return NotFound();
+
+        _context.Products.Remove(product);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Deleted." });
+    }
 }
+
+
 
 public class AdminLoginRequest
 {
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+}
+
+public class AdminProductDto
+{
+    public string  Name        { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public decimal BasePrice   { get; set; }
 }
