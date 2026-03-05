@@ -16,6 +16,7 @@ public class ProductsController : ControllerBase
         _context = context;
     }
 
+    // GET: api/Products  (public — active only)
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts()
     {
@@ -28,6 +29,24 @@ public class ProductsController : ControllerBase
             .ToListAsync();
     }
 
+    // GET: api/Products/all  (admin — includes inactive products)
+    [HttpGet("all")]
+    public async Task<ActionResult<IEnumerable<ProductDto>>> GetAllProducts()
+    {
+        // Simple role check via header — set by frontend when logged in as Admin
+        var role = Request.Headers["X-User-Role"].FirstOrDefault();
+        if (role != "Admin")
+            return Forbid();
+
+        return await _context.Products
+            .Include(p => p.Options)
+            .Include(p => p.PriceTiers)
+            .OrderBy(p => p.Name)
+            .Select(p => MapToDto(p))
+            .ToListAsync();
+    }
+
+    // GET: api/Products/{id}
     [HttpGet("{id}")]
     public async Task<ActionResult<ProductDto>> GetProduct(int id)
     {
@@ -40,9 +59,14 @@ public class ProductsController : ControllerBase
         return MapToDto(product);
     }
 
+    // POST: api/Products  (admin only)
     [HttpPost]
     public async Task<ActionResult<ProductDto>> PostProduct(CreateProductDto dto)
     {
+        var role = Request.Headers["X-User-Role"].FirstOrDefault();
+        if (role != "Admin")
+            return Forbid();
+
         var product = new Product
         {
             Name = dto.Name,
@@ -70,9 +94,14 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, MapToDto(product));
     }
 
+    // PUT: api/Products/{id}  (admin only)
     [HttpPut("{id}")]
     public async Task<IActionResult> PutProduct(int id, UpdateProductDto dto)
     {
+        var role = Request.Headers["X-User-Role"].FirstOrDefault();
+        if (role != "Admin")
+            return Forbid();
+
         var product = await _context.Products
             .Include(p => p.Options)
             .Include(p => p.PriceTiers)
@@ -111,9 +140,14 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
+    // DELETE: api/Products/{id}  (admin only — soft delete / deactivate)
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeactivateProduct(int id)
     {
+        var role = Request.Headers["X-User-Role"].FirstOrDefault();
+        if (role != "Admin")
+            return Forbid();
+
         var product = await _context.Products.FindAsync(id);
         if (product == null) return NotFound();
         product.IsActive = false;

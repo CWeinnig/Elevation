@@ -4,8 +4,7 @@ const SQUARE_LOCATION_ID = 'YOUR_SANDBOX_LOCATION_ID';
 
 let products = [];
 let cart = [];
-let currentUser = null;
-let currentAdmin = null;
+let currentUser = null;   // { id, name, email, role, createdAt }
 let squareCard = null;
 let squarePayments = null;
 
@@ -15,16 +14,80 @@ let adminOrders = [];
 let adminActiveId = null;
 let adminIsEditMode = false;
 let adminDeleteTargetId = null;
-let adminActiveTab = 'products'; // 'products' | 'orders'
+let adminActiveTab = 'products';
 
-// Payment-link return state (quote flow)
+// Payment-link return state
 let pendingPayOrderId = null;
 let pendingPayToken = null;
 let pendingPayInfo = null;
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function isAdmin() { return currentUser && currentUser.role === 'Admin'; }
+
+/** Build headers that include admin identity when logged in as admin */
+function adminHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'X-User-Id': currentUser ? String(currentUser.id) : '',
+        'X-User-Role': currentUser ? currentUser.role : ''
+    };
+}
+
+function escHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function getStatusColor(status) {
+    const map = {
+        'QuoteRequested': { bg: 'rgba(124,58,237,0.12)', text: '#7c3aed' },
+        'ProofSent': { bg: 'rgba(6,182,212,0.12)', text: '#06b6d4' },
+        'ProofApproved': { bg: 'rgba(16,185,129,0.12)', text: '#10b981' },
+        'AwaitingPayment': { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b' },
+        'Paid': { bg: 'rgba(16,185,129,0.12)', text: '#10b981' },
+        'Completed': { bg: 'rgba(16,185,129,0.15)', text: '#059669' },
+        'Cancelled': { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
+        'Pending': { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' },
+    };
+    return map[status] || { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' };
+}
+
+function formatStatus(status) {
+    const map = {
+        'QuoteRequested': 'Quote Requested',
+        'ProofSent': 'Proof Sent',
+        'ProofApproved': 'Proof Approved',
+        'AwaitingPayment': 'Awaiting Payment',
+        'Paid': 'Paid',
+        'Completed': 'Completed',
+        'Cancelled': 'Cancelled',
+        'Pending': 'Pending',
+    };
+    return map[status] || status;
+}
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const icon = document.getElementById('themeIcon');
+    if (html.dataset.theme === 'dark') {
+        html.dataset.theme = 'light';
+        icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>';
+    } else {
+        html.dataset.theme = 'dark';
+        icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+    }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
+    loadSessionFromStorage();
     try {
         const res = await fetch(`${API_BASE}/api/Products`);
         if (!res.ok) throw new Error('Failed to load products');
@@ -34,7 +97,6 @@ async function init() {
         document.getElementById('productsGrid').innerHTML =
             '<div style="color:var(--muted);padding:2rem;grid-column:1/-1;">Could not connect to server. Please try again later.</div>';
     }
-    loadSessionFromStorage();
     await checkPaymentReturn();
 }
 
@@ -152,8 +214,6 @@ async function openRequestModal() {
     renderModalOrderDetails();
     document.getElementById('requestModal').classList.add('show');
     document.body.style.overflow = 'hidden';
-
-    // Show/hide design section & payment section based on mode
     updateCheckoutMode();
 }
 
@@ -210,7 +270,6 @@ async function submitQuote() {
     btn.disabled = true; btn.textContent = isQuote ? 'Sending...' : 'Processing...';
 
     try {
-        // Upload any attached files first
         const fileIds = [];
         for (const item of cart) {
             if (item.imageFile) {
@@ -223,7 +282,6 @@ async function submitQuote() {
         let squarePaymentId = '';
 
         if (!isQuote) {
-            // Process payment immediately
             const tokenResult = await squareCard.tokenize();
             if (tokenResult.status !== 'OK') {
                 showToast(`Payment error: ${tokenResult.errors?.map(e => e.message).join(', ') || 'Card error.'}`);
@@ -260,9 +318,9 @@ async function submitQuote() {
         closeRequestModal(); cart = []; updateBadge();
 
         if (isQuote) {
-            showToast(`Quote #${order.id} submitted! We'll send you a proof to review. ✓`);
+            showToast(`Quote submitted! We'll send you a proof to review. ✓`);
         } else {
-            showToast(`Order #${order.id} placed successfully! ✓`);
+            showToast(`Order placed successfully! ✓`);
         }
     } catch (err) {
         showToast('Something went wrong. Please try again.');
@@ -277,15 +335,13 @@ async function submitQuote() {
 async function checkPaymentReturn() {
     const params = new URLSearchParams(window.location.search);
 
-    // Standard order confirmation return
     if (params.get('order') && params.get('paid') === 'true') {
         cart = []; updateBadge();
-        showToast(`Order #${params.get('order')} placed successfully! ✓`);
+        showToast(`Order placed successfully! ✓`);
         window.history.replaceState({}, document.title, window.location.pathname);
         return;
     }
 
-    // Quote payment link return: ?payOrder=ID&token=TOKEN
     const payOrderId = params.get('payOrder');
     const payToken = params.get('token');
     if (payOrderId && payToken) {
@@ -359,7 +415,7 @@ async function submitProofPayment() {
         if (!completeRes.ok) { showToast('Could not record payment. Please contact us.'); return; }
 
         closeProofPayModal();
-        showToast(`Payment confirmed for Order #${pendingPayOrderId}! ✓`);
+        showToast(`Payment confirmed for your order! ✓`);
         pendingPayOrderId = null; pendingPayToken = null; pendingPayInfo = null;
     } catch {
         showToast('Something went wrong. Please try again.');
@@ -368,21 +424,12 @@ async function submitProofPayment() {
     }
 }
 
-// ── Sign In / Auth ────────────────────────────────────────────────────────────
-
-function switchTab(tab) {
-    const isAdmin = tab === 'admin';
-    document.getElementById('signInForm').style.display = isAdmin ? 'none' : 'block';
-    document.getElementById('createAccountForm').style.display = 'none';
-    document.getElementById('adminForm').style.display = isAdmin ? 'block' : 'none';
-    document.getElementById('tabCustomer').style.cssText = `flex:1;padding:10px;background:none;border:none;border-bottom:2px solid ${isAdmin ? 'transparent' : 'var(--accent2)'};margin-bottom:-2px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;color:${isAdmin ? 'var(--muted)' : 'var(--accent2)'};cursor:pointer;`;
-    document.getElementById('tabAdmin').style.cssText = `flex:1;padding:10px;background:none;border:none;border-bottom:2px solid ${isAdmin ? 'var(--accent2)' : 'transparent'};margin-bottom:-2px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;color:${isAdmin ? 'var(--accent2)' : 'var(--muted)'};cursor:pointer;`;
-}
+// ── Sign In / Auth — UNIFIED ──────────────────────────────────────────────────
 
 function openSignIn() {
-    if (currentAdmin) { openAdminPanel(); return; }
+    // If already logged in, always show their account modal (admin or not)
     if (currentUser) { openAccount(); return; }
-    switchTab('customer');
+    switchToSignIn();
     document.getElementById('signInModal').classList.add('show');
     document.body.style.overflow = 'hidden';
 }
@@ -390,7 +437,7 @@ function openSignIn() {
 function closeSignIn() {
     document.getElementById('signInModal').classList.remove('show');
     document.body.style.overflow = '';
-    ['signInEmail', 'signInPassword', 'createName', 'createEmail', 'createPassword', 'adminUsername', 'adminPassword'].forEach(id => {
+    ['signInEmail', 'signInPassword', 'createName', 'createEmail', 'createPassword'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
 }
@@ -406,19 +453,33 @@ function switchToSignIn() {
     document.getElementById('createAccountForm').style.display = 'none';
 }
 
+/**
+ * Unified login — works for both customers and admins.
+ * The server returns { role: "Admin" | "Customer" } as part of UserDto.
+ * If role is Admin, we show the admin nav button automatically.
+ */
 async function handleSignIn() {
     const email = document.getElementById('signInEmail').value.trim();
     const password = document.getElementById('signInPassword').value;
     if (!email) { showToast('Please enter your email.'); return; }
     if (!password) { showToast('Please enter your password.'); return; }
     try {
-        const res = await fetch(`${API_BASE}/api/Users/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+        const res = await fetch(`${API_BASE}/api/Users/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
         if (res.status === 401) { showToast('Invalid email or password.'); return; }
         if (!res.ok) throw new Error();
         currentUser = await res.json();
         try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch { }
-        closeSignIn(); updateNavUser();
-        showToast(`Welcome back, ${currentUser.name}!`);
+        closeSignIn();
+        updateNavAfterLogin();
+        if (isAdmin()) {
+            showToast(`Welcome back, ${currentUser.name}! Admin access granted.`);
+        } else {
+            showToast(`Welcome back, ${currentUser.name}!`);
+        }
     } catch { showToast('Sign in failed. Please try again.'); }
 }
 
@@ -430,55 +491,37 @@ async function handleCreateAccount() {
     if (!email) { showToast('Please enter your email.'); return; }
     if (!password) { showToast('Please enter a password.'); return; }
     try {
-        const res = await fetch(`${API_BASE}/api/Users/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password }) });
+        const res = await fetch(`${API_BASE}/api/Users/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+        });
         if (res.status === 409) { showToast('Email is already registered.'); return; }
         if (!res.ok) throw new Error();
         currentUser = await res.json();
         try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch { }
-        closeSignIn(); updateNavUser();
+        closeSignIn();
+        updateNavAfterLogin();
         showToast(`Account created! Welcome, ${currentUser.name}!`);
     } catch { showToast('Account creation failed. Please try again.'); }
 }
 
-async function handleAdminLogin() {
-    const username = document.getElementById('adminUsername').value.trim();
-    const password = document.getElementById('adminPassword').value;
-    if (!username) { showToast('Please enter your username.'); return; }
-    if (!password) { showToast('Please enter your password.'); return; }
-    try {
-        const res = await fetch(`${API_BASE}/api/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-        if (!res.ok) { showToast('Invalid admin credentials.'); return; }
-        const data = await res.json();
-        currentAdmin = { username, token: data.token };
-        try { sessionStorage.setItem('adminSession', JSON.stringify(currentAdmin)); } catch { }
-        closeSignIn();
-        updateNavForAdmin();
-        showToast('Welcome, Admin!');
-        openAdminPanel();
-    } catch { showToast('Admin login failed. Is the server running?'); }
-}
-
-function updateNavUser() {
+function updateNavAfterLogin() {
     const btn = document.getElementById('authNavBtn');
     const textNode = [...btn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
-    if (textNode && currentUser) textNode.textContent = ` ${currentUser.name}`;
-}
-
-function updateNavForAdmin() {
-    document.getElementById('adminNavBtn').style.display = 'flex';
-    const btn = document.getElementById('authNavBtn');
-    const textNode = [...btn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
-    if (textNode) textNode.textContent = ' Admin';
+    if (textNode) textNode.textContent = ` ${currentUser.name}`;
+    // Show Admin nav button if role is Admin
+    const adminBtn = document.getElementById('adminNavBtn');
+    adminBtn.style.display = isAdmin() ? 'flex' : 'none';
 }
 
 function loadSessionFromStorage() {
     try {
         const raw = localStorage.getItem('currentUser');
-        if (raw) { currentUser = JSON.parse(raw); updateNavUser(); }
-    } catch { }
-    try {
-        const raw = sessionStorage.getItem('adminSession');
-        if (raw) { currentAdmin = JSON.parse(raw); updateNavForAdmin(); }
+        if (raw) {
+            currentUser = JSON.parse(raw);
+            updateNavAfterLogin();
+        }
     } catch { }
 }
 
@@ -486,6 +529,7 @@ function loadSessionFromStorage() {
 
 async function openAccount() {
     if (!currentUser) { openSignIn(); return; }
+
     document.getElementById('accountEmail').textContent = currentUser.email;
     document.getElementById('accountUpdateMsg').textContent = '';
     document.getElementById('updateCurrentPw').value = '';
@@ -523,7 +567,7 @@ function renderAccountOrders(orders) {
         <div class="order-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
                 <div>
-                    <div style="font-weight:700;">${isQuote ? '📋 Quote' : '📦 Order'} #${o.id}</div>
+                    <div style="font-weight:700;">${isQuote ? '📋 Quote' : '📦 Order'}</div>
                     <div style="font-size:0.85rem;color:var(--muted);">${new Date(o.createdAt).toLocaleString()}</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -539,23 +583,16 @@ function renderAccountOrders(orders) {
 }
 
 async function approveProof(orderId) {
-    // We need the PaymentToken — fetch the order's payment info endpoint won't work without the token.
-    // Instead, call a dedicated approve endpoint; user is logged in so we use their userId as auth.
-    // The approve-proof endpoint needs the token. Since we don't store it client-side,
-    // we'll ask the server for a customer-facing approve route using userId as verification.
-    // For now we call the admin-style endpoint with a note that auth should be added in production.
     showToast('Contacting server...');
     try {
-        // Fetch the order to get token from a customer-auth endpoint
         const infoRes = await fetch(`${API_BASE}/api/Orders/${orderId}/customer-approve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: currentUser.id })
         });
         if (!infoRes.ok) { showToast('Could not approve proof. Please contact us.'); return; }
-        const data = await infoRes.json();
         showToast('Proof approved! Check your email for the payment link. ✓');
-        openAccount(); // Refresh
+        openAccount();
     } catch { showToast('Something went wrong.'); }
 }
 
@@ -580,7 +617,7 @@ async function handleUpdateAccount() {
         const updated = await res.json();
         currentUser = { ...currentUser, ...updated };
         try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch { }
-        updateNavUser();
+        updateNavAfterLogin();
         document.getElementById('accountEmail').textContent = currentUser.email;
         msgEl.textContent = 'Account updated successfully!';
         msgEl.style.color = '#10b981';
@@ -596,13 +633,16 @@ function signOut() {
     const btn = document.getElementById('authNavBtn');
     const textNode = [...btn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
     if (textNode) textNode.textContent = ' Sign In';
+    document.getElementById('adminNavBtn').style.display = 'none';
     closeAccount();
+    closeAdminPanel();
     showToast('Signed out');
 }
 
 // ── Admin Panel ───────────────────────────────────────────────────────────────
 
 async function openAdminPanel() {
+    if (!isAdmin()) { showToast('Admin access required.'); return; }
     document.getElementById('adminOverlay').classList.add('show');
     document.body.style.overflow = 'hidden';
     switchAdminTab(adminActiveTab);
@@ -613,32 +653,31 @@ function closeAdminIfOutside(e) { if (e.target === document.getElementById('admi
 
 function switchAdminTab(tab) {
     adminActiveTab = tab;
-    document.getElementById('adminTabProducts').classList.toggle('active', tab === 'products');
-    document.getElementById('adminTabOrders').classList.toggle('active', tab === 'orders');
+    ['products', 'orders', 'files'].forEach(t => {
+        const btn = document.getElementById(`adminTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
     document.getElementById('adminProductsPane').style.display = tab === 'products' ? 'grid' : 'none';
     document.getElementById('adminOrdersPane').style.display = tab === 'orders' ? 'flex' : 'none';
+    document.getElementById('adminFilesPane').style.display = tab === 'files' ? 'block' : 'none';
     if (tab === 'products') adminLoadProducts();
     if (tab === 'orders') adminLoadOrders();
+    if (tab === 'files') adminLoadFiles();
 }
 
-function adminSignOut() {
-    try { sessionStorage.removeItem('adminSession'); } catch { }
-    currentAdmin = null;
-    document.getElementById('adminNavBtn').style.display = 'none';
-    const btn = document.getElementById('authNavBtn');
-    const textNode = [...btn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
-    if (textNode) textNode.textContent = ' Sign In';
-    closeAdminPanel();
-    showToast('Admin signed out');
-}
+function adminSignOut() { signOut(); }
 
 // ── Admin: Products ───────────────────────────────────────────────────────────
 
 async function adminLoadProducts() {
     try {
-        const res = await fetch(`${API_BASE}/api/admin/products`);
-        if (!res.ok) throw new Error();
-        adminProducts = await res.json();
+        const res = await fetch(`${API_BASE}/api/Products/all`, {
+            headers: { 'X-User-Id': String(currentUser?.id), 'X-User-Role': currentUser?.role || '' }
+        });
+        // Fall back to public endpoint if admin-specific not available
+        const r = res.ok ? res : await fetch(`${API_BASE}/api/Products`);
+        if (!r.ok) throw new Error();
+        adminProducts = await r.json();
         adminRenderList();
     } catch { showToast('Failed to load products'); }
 }
@@ -707,15 +746,30 @@ async function adminSaveProduct(e) {
     e.preventDefault();
     const btn = document.getElementById('adminSaveBtn');
     btn.disabled = true; btn.textContent = 'Saving…';
-    const payload = { name: document.getElementById('adminFName').value.trim(), description: document.getElementById('adminFDesc').value.trim(), basePrice: parseFloat(document.getElementById('adminFPrice').value) };
+    const payload = {
+        name: document.getElementById('adminFName').value.trim(),
+        description: document.getElementById('adminFDesc').value.trim(),
+        basePrice: parseFloat(document.getElementById('adminFPrice').value),
+        minPrice: 0, maxPrice: 0, isActive: true, options: [], priceTiers: []
+    };
     try {
         let res;
-        if (adminIsEditMode) {
-            res = await fetch(`${API_BASE}/api/admin/products/${document.getElementById('adminProductId').value}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const productId = document.getElementById('adminProductId').value;
+        if (adminIsEditMode && productId) {
+            // Use the ProductsController PUT endpoint
+            res = await fetch(`${API_BASE}/api/Products/${productId}`, {
+                method: 'PUT',
+                headers: adminHeaders(),
+                body: JSON.stringify({ ...payload, options: [], priceTiers: [] })
+            });
         } else {
-            res = await fetch(`${API_BASE}/api/admin/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            res = await fetch(`${API_BASE}/api/Products`, {
+                method: 'POST',
+                headers: adminHeaders(),
+                body: JSON.stringify(payload)
+            });
         }
-        if (res.ok) {
+        if (res.ok || res.status === 204) {
             showToast(adminIsEditMode ? 'Product updated!' : 'Product added!');
             await adminLoadProducts();
             const r2 = await fetch(`${API_BASE}/api/Products`);
@@ -736,8 +790,11 @@ function adminCloseDeleteModal() { document.getElementById('adminDeleteModal').c
 async function adminConfirmDelete() {
     if (!adminDeleteTargetId) return;
     try {
-        const res = await fetch(`${API_BASE}/api/admin/products/${adminDeleteTargetId}`, { method: 'DELETE' });
-        if (res.ok) {
+        const res = await fetch(`${API_BASE}/api/Products/${adminDeleteTargetId}`, {
+            method: 'DELETE',
+            headers: adminHeaders()
+        });
+        if (res.ok || res.status === 204) {
             showToast('Product deleted.');
             adminCloseDeleteModal(); adminCancelEdit();
             await adminLoadProducts();
@@ -766,10 +823,6 @@ function adminRenderOrders() {
         container.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No orders yet.</div>';
         return;
     }
-
-    // Group: quotes first, then standard orders
-    const quotes = adminOrders.filter(o => o.isQuoteRequest);
-    const orders = adminOrders.filter(o => !o.isQuoteRequest);
 
     container.innerHTML = `
         <div class="admin-orders-layout">
@@ -807,7 +860,6 @@ async function adminSelectOrder(id) {
     const order = adminOrders.find(o => o.id === id);
     if (!order) return;
 
-    // Highlight selected
     document.querySelectorAll('.admin-order-card').forEach(c => c.classList.remove('active'));
     const cards = document.querySelectorAll('.admin-order-card');
     cards.forEach(c => { if (c.textContent.includes(`#${id}`)) c.classList.add('active'); });
@@ -909,62 +961,67 @@ async function adminUpdateStatus(orderId) {
             body: JSON.stringify({ newStatus: select.value })
         });
         if (!res.ok) { showToast('Status update failed.'); return; }
-        showToast('Status updated! ✓');
+        showToast('Status updated! Customer notified. ✓');
         await adminLoadOrders();
         adminSelectOrder(orderId);
     } catch { showToast('Network error.'); }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Admin: File Archive ────────────────────────────────────────────────────────
 
-function getStatusColor(status) {
-    const map = {
-        'QuoteRequested': { bg: 'rgba(124,58,237,0.12)', text: '#7c3aed' },
-        'ProofSent': { bg: 'rgba(6,182,212,0.12)', text: '#06b6d4' },
-        'ProofApproved': { bg: 'rgba(16,185,129,0.12)', text: '#10b981' },
-        'AwaitingPayment': { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b' },
-        'Paid': { bg: 'rgba(16,185,129,0.12)', text: '#10b981' },
-        'Completed': { bg: 'rgba(16,185,129,0.15)', text: '#059669' },
-        'Cancelled': { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
-        'Pending': { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' },
-    };
-    return map[status] || { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' };
-}
-
-function formatStatus(status) {
-    const map = {
-        'QuoteRequested': 'Quote Requested',
-        'ProofSent': 'Proof Sent',
-        'ProofApproved': 'Proof Approved',
-        'AwaitingPayment': 'Awaiting Payment',
-        'Paid': 'Paid',
-        'Completed': 'Completed',
-        'Cancelled': 'Cancelled',
-        'Pending': 'Pending',
-    };
-    return map[status] || status;
-}
-
-function toggleTheme() {
-    const html = document.documentElement;
-    const icon = document.getElementById('themeIcon');
-    if (html.dataset.theme === 'dark') {
-        html.dataset.theme = 'light';
-        icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>';
-    } else {
-        html.dataset.theme = 'dark';
-        icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+async function adminLoadFiles() {
+    const container = document.getElementById('adminFilesList');
+    container.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">Loading files...</div>';
+    try {
+        const res = await fetch(`${API_BASE}/api/Files/all`);
+        if (!res.ok) throw new Error();
+        const files = await res.json();
+        adminRenderFiles(files);
+    } catch {
+        container.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">Failed to load files.</div>';
     }
 }
 
-function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 3500);
-}
+function adminRenderFiles(files) {
+    const container = document.getElementById('adminFilesList');
+    if (!files || files.length === 0) {
+        container.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No files uploaded yet.</div>';
+        return;
+    }
 
-function escHtml(str) {
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    // Group files by orderId
+    const grouped = {};
+    files.forEach(f => {
+        const key = f.orderId ? `Order #${f.orderId}` : 'Unattached';
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(f);
+    });
+
+    container.innerHTML = Object.entries(grouped).map(([group, groupFiles]) => `
+        <div style="margin-bottom:24px;">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);">${group}</div>
+            <div style="display:grid;gap:8px;">
+                ${groupFiles.map(f => {
+        const isProof = f.originalFileName?.startsWith('PROOF_');
+        const displayName = isProof ? f.originalFileName.replace('PROOF_', '') : f.originalFileName;
+        const icon = isProof ? '🖨️' : '📎';
+        const tagColor = isProof ? 'rgba(6,182,212,0.12)' : 'rgba(124,58,237,0.12)';
+        const tagText = isProof ? '#06b6d4' : '#7c3aed';
+        const tagLabel = isProof ? 'Proof' : 'Customer File';
+        return `
+                        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);">
+                            <span style="font-size:18px;">${icon}</span>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(displayName)}</div>
+                                <div style="font-size:11px;color:var(--muted);">${new Date(f.uploadedAt).toLocaleString()}</div>
+                            </div>
+                            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${tagColor};color:${tagText};white-space:nowrap;">${tagLabel}</span>
+                            <a href="${API_BASE}${f.downloadUrl}" target="_blank" style="padding:6px 12px;background:var(--accent2);color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⬇ Download</a>
+                        </div>`;
+    }).join('')}
+            </div>
+        </div>
+    `).join('');
 }
 
 init();

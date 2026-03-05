@@ -12,7 +12,6 @@
 
     <header>
         <a class="logo-wrap" href="#">
-            <div class="logo-img">D&amp;J</div>
             <span class="logo-text">D &amp; J's Elevated Designs</span>
         </a>
         <nav>
@@ -37,7 +36,7 @@
 
     <div class="products-wrapper">
         <div class="products-section">
-            <h2>Our Products &amp; Services</h2>
+            <h2>Our Products</h2>
             <div class="products-grid" id="productsGrid">
                 <div style="color:var(--muted);padding:2rem;grid-column:1/-1;">Loading products...</div>
             </div>
@@ -47,15 +46,15 @@
     <footer style="background:linear-gradient(120deg,#7c3aed,#06b6d4);padding:3rem 2rem 1.5rem;margin-top:auto;">
         <div style="max-width:1100px;margin:0 auto 1.5rem;display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2.5rem;align-items:start;">
             <div>
-                <div style="width:52px;height:52px;border-radius:8px;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.3);color:#fff;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;margin-bottom:0.75rem;">D&amp;J</div>
                 <p style="font-size:0.88rem;color:rgba(255,255,255,0.8);line-height:1.6;max-width:240px;">Professional printing and design services tailored to your vision.</p>
             </div>
             <div>
                 <h4 style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:#fff;margin-bottom:1rem;">Contact Us</h4>
-                <a href="mailto:digitizeyourideas@gmail.com" style="display:flex;align-items:center;gap:8px;font-size:0.88rem;color:rgba(255,255,255,0.8);text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.8)'">
+                <a id="contactEmailLink" style="display:flex;align-items:center;gap:8px;font-size:0.88rem;color:rgba(255,255,255,0.8);text-decoration:none;cursor:pointer;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.8)'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
-                    digitizeyourideas@gmail.com
+                    <span id="contactEmailText">digitizeyourideas&#64;gmail.com</span>
                 </a>
+                <script>(function () { var a = document.getElementById('contactEmailLink'); var s = document.getElementById('contactEmailText'); var e = 'digitizeyourideas' + '@' + 'gmail.com'; if (a) a.href = 'mailto:' + e; if (s) s.textContent = e; })();</script>
             </div>
             <div>
                 <h4 style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:#fff;margin-bottom:1rem;">Follow Us</h4>
@@ -112,7 +111,30 @@
             <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="contactEmail" placeholder="you@example.com" /></div>
             <div class="form-group"><label class="form-label">Phone</label><input type="tel" id="contactPhone" placeholder="(555) 000-0000" /></div>
 
-           
+            <!-- Order Mode Toggle -->
+            <p class="section-label">Order Type</p>
+            <div class="mode-toggle-group">
+                <label class="mode-toggle-option">
+                    <input type="radio" name="checkoutMode" id="checkoutModePay" value="pay" checked onchange="updateCheckoutMode()" />
+                    <div class="mode-toggle-card">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
+                        <div>
+                            <div style="font-weight:700;font-size:0.9rem;">I have my design</div>
+                            <div style="font-size:0.78rem;color:var(--muted);">Pay now, upload file</div>
+                        </div>
+                    </div>
+                </label>
+                <label class="mode-toggle-option">
+                    <input type="radio" name="checkoutMode" id="checkoutModeQuote" value="quote" onchange="updateCheckoutMode()" />
+                    <div class="mode-toggle-card">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
+                        <div>
+                            <div style="font-weight:700;font-size:0.9rem;">I need a design</div>
+                            <div style="font-size:0.78rem;color:var(--muted);">Get a quote, pay after proof</div>
+                        </div>
+                    </div>
+                </label>
+            </div>
 
             <p class="section-label">Order Details</p>
             <div id="modalOrderDetails"></div>
@@ -184,23 +206,19 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
-         SIGN IN MODAL
+         SIGN IN MODAL — Unified login (no customer/admin tabs)
     ════════════════════════════════════════════════════════ -->
     <div class="modal-overlay" id="signInModal" onclick="closeSignInIfOutside(event)">
         <div class="modal signin-modal" id="signInBox">
             <div class="modal-header">
                 <div>
-                    <h2>Sign In to Your Account</h2>
-                    <p class="signin-subtitle">Access your saved cart and order history</p>
+                    <h2>Sign In</h2>
+                    <p class="signin-subtitle">Access your account and order history</p>
                 </div>
                 <button class="close-btn" onclick="closeSignIn()">&times;</button>
             </div>
 
-            <div style="display:flex;margin-bottom:1.5rem;border-bottom:2px solid var(--border);">
-                <button id="tabCustomer" onclick="switchTab('customer')" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid var(--accent2);margin-bottom:-2px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;color:var(--accent2);cursor:pointer;">Customer</button>
-                <button id="tabAdmin" onclick="switchTab('admin')" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;color:var(--muted);cursor:pointer;">Admin</button>
-            </div>
-
+            <!-- Sign In Form -->
             <div id="signInForm">
                 <div class="form-group"><label class="form-label">Email</label><input type="email" id="signInEmail" placeholder="your@email.com" /></div>
                 <div class="form-group"><label class="form-label">Password</label><input type="password" id="signInPassword" placeholder="••••••••" /></div>
@@ -208,18 +226,13 @@
                 <p class="signin-switch">Don't have an account? <a href="#" onclick="switchToCreateAccount(); return false;">Create one</a></p>
             </div>
 
+            <!-- Create Account Form -->
             <div id="createAccountForm" style="display:none;">
                 <div class="form-group"><label class="form-label">Full Name <span>*</span></label><input type="text" id="createName" placeholder="Your name" /></div>
                 <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="createEmail" placeholder="your@email.com" /></div>
                 <div class="form-group"><label class="form-label">Password <span>*</span></label><input type="password" id="createPassword" placeholder="••••••••" /></div>
                 <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleCreateAccount()">Create Account</button>
                 <p class="signin-switch">Already have an account? <a href="#" onclick="switchToSignIn(); return false;">Sign in</a></p>
-            </div>
-
-            <div id="adminForm" style="display:none;">
-                <div class="form-group"><label class="form-label">Username</label><input type="text" id="adminUsername" placeholder="admin" autocomplete="username" /></div>
-                <div class="form-group"><label class="form-label">Password</label><input type="password" id="adminPassword" placeholder="••••••••" /></div>
-                <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleAdminLogin()">Sign In as Admin</button>
             </div>
         </div>
     </div>
@@ -293,6 +306,10 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /></svg>
                             Orders
                         </button>
+                        <button class="admin-tab" id="adminTabFiles" onclick="switchAdminTab('files')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+                            Files
+                        </button>
                     </div>
                     <button class="admin-signout-btn" onclick="adminSignOut()">Sign Out</button>
                     <button class="close-btn" style="color:rgba(255,255,255,0.8);" onclick="closeAdminPanel()">&times;</button>
@@ -351,6 +368,17 @@
                 <div class="admin-orders-pane" id="adminOrdersPane" style="display:none;flex-direction:column;">
                     <!-- Rendered dynamically by adminRenderOrders() -->
                 </div>
+
+                <!-- ── FILES PANE ── -->
+                <div id="adminFilesPane" style="display:none;padding:24px;overflow-y:auto;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                        <div style="font-size:16px;font-weight:700;">File Archive</div>
+                        <div style="font-size:13px;color:var(--muted);">All uploaded customer &amp; proof files</div>
+                    </div>
+                    <div id="adminFilesList">
+                        <div style="padding:2rem;color:var(--muted);text-align:center;">Loading files...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -371,6 +399,6 @@
     </div>
 
     <div class="toast" id="toast"></div>
-    <script src="app.js"></script>
+    <script src="App.js"></script>
 </body>
 </html>

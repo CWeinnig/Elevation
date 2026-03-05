@@ -18,11 +18,29 @@ public static class DbInitializer
         context.Products.AddRange(products);
         context.SaveChanges();
 
-        context.Users.AddRange(
-            new User { Name = "Test Admin", Email = "admin@example.com", PasswordHash = "password123", Role = "Admin", CreatedAt = DateTime.UtcNow },
-            new User { Name = "Test Customer", Email = "customer@example.com", PasswordHash = "password123", Role = "Customer", CreatedAt = DateTime.UtcNow }
-        );
-        context.SaveChanges();
+        // Seed users with properly hashed passwords
+        if (!context.Users.Any())
+        {
+            context.Users.AddRange(
+                new User
+                {
+                    Name = "Admin",
+                    Email = "admin@djselevated.com",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
+                    Role = "Admin",
+                    CreatedAt = DateTime.UtcNow
+                },
+                new User
+                {
+                    Name = "Test Customer",
+                    Email = "customer@example.com",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"),
+                    Role = "Customer",
+                    CreatedAt = DateTime.UtcNow
+                }
+            );
+            context.SaveChanges();
+        }
 
         var options = new ProductOption[]
         {

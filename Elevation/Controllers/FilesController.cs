@@ -78,6 +78,25 @@ public class FilesController : ControllerBase
         });
     }
 
+    // GET: api/Files/all  (admin — returns all files grouped by order for archive view)
+    [HttpGet("all")]
+    public async Task<ActionResult<IEnumerable<UploadedFileDto>>> GetAllFiles()
+    {
+        var files = await _context.UploadedFiles
+            .OrderByDescending(f => f.UploadedAt)
+            .Select(f => new UploadedFileDto
+            {
+                Id = f.Id,
+                OrderId = f.OrderId,
+                OriginalFileName = f.OriginalFileName,
+                UploadedAt = f.UploadedAt,
+                DownloadUrl = Url.Action(nameof(DownloadFile), "Files", new { id = f.Id }, Request.Scheme)!
+            })
+            .ToListAsync();
+
+        return Ok(files);
+    }
+
     // GET: api/Files/order/{orderId}
     [HttpGet("order/{orderId}")]
     public async Task<ActionResult<IEnumerable<UploadedFileDto>>> GetFilesForOrder(int orderId)
