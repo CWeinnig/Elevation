@@ -7,6 +7,378 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
     <script src="https://sandbox.web.squarecdn.com/v1/square.js"></script>
     <link rel="stylesheet" href="styles.css" />
+    <style>
+        /* ═══════════════════════════════════
+           PRODUCT DETAIL MODAL
+        ═══════════════════════════════════ */
+        .pd-modal {
+            max-width: 600px;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            max-height: 92vh;
+        }
+
+        .pd-header {
+            background: linear-gradient(120deg, #7c3aed, #06b6d4);
+            padding: 1.75rem 2rem;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-shrink: 0;
+        }
+
+        .pd-header-info {}
+
+        .pd-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.4rem;
+            color: #fff;
+            line-height: 1.25;
+            margin-bottom: 6px;
+        }
+
+        .pd-price-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,255,255,0.18);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 30px;
+            padding: 4px 14px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .pd-body {
+            padding: 1.75rem 2rem 2rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .pd-body::-webkit-scrollbar { width: 4px; }
+        .pd-body::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.2); border-radius: 4px; }
+
+        .pd-desc {
+            font-size: 0.92rem;
+            color: var(--muted);
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Quantity stepper */
+        .pd-section-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .pd-qty-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .qty-stepper {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .qty-stepper button {
+            width: 40px;
+            height: 40px;
+            background: var(--bg);
+            border: none;
+            color: var(--text);
+            font-size: 1.2rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+            line-height: 1;
+        }
+
+        .qty-stepper button:hover { background: rgba(124,58,237,0.08); }
+
+        .qty-stepper-val {
+            min-width: 48px;
+            text-align: center;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text);
+            background: var(--surface);
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-left: 1.5px solid var(--border);
+            border-right: 1.5px solid var(--border);
+        }
+
+        .pd-est-total {
+            font-size: 0.88rem;
+            color: var(--muted);
+        }
+
+        .pd-est-total strong {
+            color: var(--accent);
+            font-size: 1.05rem;
+        }
+
+        /* Mode selection cards */
+        .pd-mode-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 1.5rem;
+        }
+
+        .pd-mode-card {
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            padding: 1.1rem 1rem;
+            background: var(--bg);
+            cursor: pointer;
+            text-align: left;
+            transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .pd-mode-card:hover {
+            border-color: rgba(124,58,237,0.4);
+        }
+
+        .pd-mode-card.active {
+            border-color: #7c3aed;
+            background: rgba(124,58,237,0.06);
+            box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+        }
+
+        .pd-mode-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            background: rgba(124,58,237,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #7c3aed;
+            flex-shrink: 0;
+        }
+
+        .pd-mode-card.active .pd-mode-icon {
+            background: rgba(124,58,237,0.15);
+        }
+
+        .pd-mode-title {
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.3;
+        }
+
+        .pd-mode-sub {
+            font-size: 0.76rem;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+
+        /* Conditional panels */
+        .pd-panel {
+            animation: fadeUp 0.2s ease;
+        }
+
+        /* Quote form */
+        .pd-quote-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(135deg, #7c3aed, #5b21b6);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: opacity 0.2s, transform 0.1s;
+            box-shadow: 0 4px 14px rgba(124,58,237,0.35);
+        }
+
+        .pd-quote-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+        .pd-quote-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* Upload dropzone */
+        .pd-dropzone {
+            border: 2px dashed var(--border);
+            border-radius: 14px;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 1rem;
+        }
+
+        .pd-dropzone.dragging {
+            border-color: #7c3aed;
+            background: rgba(124,58,237,0.04);
+        }
+
+        .pd-dropzone-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 2rem 1rem;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .pd-dropzone-text {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .pd-dropzone-hint {
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
+
+        .pd-file-attached {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 1rem 1.25rem;
+        }
+
+        .pd-file-name {
+            flex: 1;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pd-file-remove {
+            font-size: 0.78rem;
+            color: #ef4444;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            flex-shrink: 0;
+        }
+
+        .pd-cart-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(135deg, #06b6d4, #0891b2);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            box-shadow: 0 4px 14px rgba(6,182,212,0.35);
+        }
+
+        .pd-cart-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+        .pd-cart-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* Spinner in button */
+        .pd-btn-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-right: 6px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* "View Details" button on product cards */
+        .btn-view-details {
+            width: 100%;
+            padding: 9px 14px;
+            border: 2px solid var(--accent2);
+            border-radius: 10px;
+            background: transparent;
+            color: var(--accent2);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .btn-view-details:hover {
+            background: var(--accent2);
+            color: #fff;
+        }
+
+        .btn-view-details svg {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+            flex-shrink: 0;
+        }
+
+        /* Quote success modal */
+        .quote-success-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(6,182,212,0.15));
+            margin: 0 auto 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .quote-success-checkmark {
+            width: 28px;
+            height: 28px;
+            stroke: #7c3aed;
+            fill: none;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+    </style>
 </head>
 <body>
 
@@ -26,7 +398,7 @@
                 Sign In
             </button>
             <button class="nav-btn" id="adminNavBtn" onclick="openAdminPanel()" style="display:none;color:rgba(255,215,0,0.95);">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                 Admin
             </button>
             <button class="nav-btn" onclick="toggleTheme()" title="Toggle dark mode">
@@ -71,9 +443,7 @@
         </div>
     </footer>
 
-    <!-- ═══════════════════════════════════════════════════════
-         CART SIDEBAR
-    ════════════════════════════════════════════════════════ -->
+    <!-- Cart Sidebar -->
     <div class="overlay" id="quotesOverlay" onclick="closeIfOutside(event)">
         <div class="quotes-panel" id="quotesPanel">
             <div class="panel-header">
@@ -85,107 +455,184 @@
                 <h3>Cart Summary</h3>
                 <div class="summary-row"><span>Total Items:</span><span id="summaryItems">0</span></div>
                 <div class="summary-row bold"><span>Subtotal:</span><span id="summaryTotal" style="color:var(--accent);">$0.00</span></div>
-                <p class="summary-note">* Estimated price. Submit below to finalize.</p>
+                <p class="summary-note">* This is an estimated price. Click below to submit your project for final pricing.</p>
                 <button class="btn-primary" style="margin-top:1rem;" onclick="openRequestModal()">
                     <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
-                    Proceed to Checkout
+                    Purchase
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         CHECKOUT MODAL
-    ════════════════════════════════════════════════════════ -->
+    <!-- Checkout Modal -->
     <div class="modal-overlay" id="requestModal" onclick="closeModalIfOutside(event)">
         <div class="modal" id="modalBox">
             <div class="modal-header">
-                <h2>Checkout</h2>
+                <h2>Your Cart</h2>
                 <button class="close-btn" onclick="closeRequestModal()">&times;</button>
             </div>
-
             <p class="section-label">Submitted On</p>
             <p id="submittedTime" style="font-size:0.9rem;margin-bottom:0.5rem;color:var(--muted);"></p>
-
             <p class="section-label">Contact Information</p>
             <div class="form-group"><label class="form-label">Name <span>*</span></label><input type="text" id="contactName" placeholder="Your name" /></div>
             <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="contactEmail" placeholder="you@example.com" /></div>
             <div class="form-group"><label class="form-label">Phone</label><input type="tel" id="contactPhone" placeholder="(555) 000-0000" /></div>
-
-           
-
             <p class="section-label">Order Details</p>
             <div id="modalOrderDetails"></div>
             <div class="modal-price-summary">
                 <div class="mps-title">Price Summary</div>
-                <div class="mps-row"><span>Quantity:</span><span id="modalQtyDisplay">×1</span></div>
+                <div class="mps-row"><span>Quantity:</span><span id="modalQtyDisplay">x1</span></div>
                 <div class="mps-row"><span>Subtotal:</span><span id="modalSubtotal">$0.00</span></div>
                 <div class="mps-row total-row"><span>Estimated Total:</span><span class="amount" id="modalTotal">$0.00</span></div>
             </div>
-
             <div class="form-group">
                 <label class="form-label">Custom Details / Notes</label>
-                <textarea id="customDetails" rows="2" placeholder="Any special instructions, colors, or requests..."></textarea>
+                <textarea id="customDetails" rows="3" placeholder="Any special instructions, colors, or requests..."></textarea>
             </div>
-
-            <!-- Design Notes (quote mode only) -->
-            <div id="designNotesSection" style="display:none;">
-                <p class="section-label">Describe Your Design <span style="color:#ef4444;">*</span></p>
-                <div class="design-notes-box">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20" style="color:var(--accent2);flex-shrink:0;margin-top:2px;"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
-                    <textarea id="designNotes" rows="4" placeholder="Describe what you'd like — colors, style, text to include, inspiration, etc. The more detail the better! We'll create a proof and send it to you before any payment is required."></textarea>
-                </div>
-                <p style="font-size:0.78rem;color:var(--muted);margin-top:6px;">✓ No payment required until you approve the proof.</p>
-            </div>
-
-            <!-- Payment section (pay-now mode only) -->
-            <div id="paymentSection">
-                <p class="section-label">Payment Information</p>
-                <div id="square-card-container" style="min-height:80px;margin-bottom:1rem;"></div>
-            </div>
-
-            <button class="btn-primary" id="submitOrderBtn" onclick="submitQuote()">
+            <p class="section-label">Payment Information</p>
+            <div id="square-card-container" style="min-height:80px;margin-bottom:1rem;"></div>
+            <button class="btn-primary" onclick="submitQuote()">
                 <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
                 Submit Order
             </button>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         PROOF PAYMENT MODAL (returned via payment link)
-    ════════════════════════════════════════════════════════ -->
-    <div class="modal-overlay" id="proofPayModal" onclick="if(event.target===this)closeProofPayModal()">
-        <div class="modal" id="proofPayBox">
-            <div class="modal-header">
-                <div>
-                    <h2>Complete Your Payment</h2>
-                    <p class="signin-subtitle">Your proof has been approved — pay to begin production</p>
+    <!-- ═══════════════════════════════════════
+         PRODUCT DETAIL MODAL
+    ═══════════════════════════════════════ -->
+    <div class="modal-overlay" id="productDetailModal" onclick="closeProductDetailIfOutside(event)" style="z-index:350;">
+        <div class="modal pd-modal">
+
+            <!-- Gradient header -->
+            <div class="pd-header">
+                <div class="pd-header-info">
+                    <div class="pd-name" id="pdName">Product Name</div>
+                    <div class="pd-price-tag" id="pdPrice">$0.00 per unit</div>
                 </div>
-                <button class="close-btn" onclick="closeProofPayModal()">&times;</button>
+                <button class="close-btn" style="color:rgba(255,255,255,0.8);flex-shrink:0;margin-top:2px;" onclick="closeProductDetail()">&times;</button>
             </div>
-            <div class="proof-pay-banner">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                Proof approved! Completing payment will start production.
+
+            <!-- Scrollable body -->
+            <div class="pd-body">
+
+                <!-- Description -->
+                <div class="pd-desc" id="pdDesc"></div>
+
+                <!-- Quantity -->
+                <div class="pd-section-label">Quantity</div>
+                <div class="pd-qty-row">
+                    <div class="qty-stepper">
+                        <button onclick="pdChangeQty(-1)" aria-label="Decrease quantity">−</button>
+                        <div class="qty-stepper-val" id="pdQtyDisplay">1</div>
+                        <button onclick="pdChangeQty(1)" aria-label="Increase quantity">+</button>
+                    </div>
+                    <div class="pd-est-total">
+                        Est. total: <strong id="pdEstTotal">$0.00</strong>
+                    </div>
+                </div>
+
+                <!-- Mode selector -->
+                <div class="pd-section-label" style="margin-bottom:10px;">How would you like to proceed?</div>
+                <div class="pd-mode-grid">
+                    <button class="pd-mode-card active" id="pdModeQuote" onclick="pdSetMode('quote')">
+                        <div class="pd-mode-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                            </svg>
+                        </div>
+                        <div class="pd-mode-title">Custom Design Request</div>
+                        <div class="pd-mode-sub">Tell us your vision — we'll create it and send you a quote</div>
+                    </button>
+                    <button class="pd-mode-card" id="pdModeUpload" onclick="pdSetMode('upload')">
+                        <div class="pd-mode-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </div>
+                        <div class="pd-mode-title">Upload My Design</div>
+                        <div class="pd-mode-sub">Have files ready? Upload and add directly to cart</div>
+                    </button>
+                </div>
+
+                <!-- QUOTE section -->
+                <div id="pdQuoteSection" class="pd-panel">
+                    <div class="pd-section-label" style="margin-bottom:10px;">Your Contact Info</div>
+                    <div class="form-group" style="margin-bottom:0.9rem;">
+                        <label class="form-label">Name <span style="color:#ef4444">*</span></label>
+                        <input type="text" id="pdQuoteName" placeholder="Your name" />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0.9rem;">
+                        <label class="form-label">Email <span style="color:#ef4444">*</span></label>
+                        <input type="email" id="pdQuoteEmail" placeholder="you@example.com" />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Describe Your Design</label>
+                        <textarea id="pdQuoteNotes" rows="3" placeholder="Colors, text, imagery, dimensions, any details about your idea…"></textarea>
+                    </div>
+                    <button class="pd-quote-btn" id="pdQuoteBtn" onclick="pdSubmitQuote()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                            <polyline points="22,6 12,13 2,6"/>
+                        </svg>
+                        Request Quote
+                    </button>
+                </div>
+
+                <!-- UPLOAD section -->
+                <div id="pdUploadSection" class="pd-panel" style="display:none;">
+                    <div class="pd-section-label" style="margin-bottom:10px;">Your Design File</div>
+                    <div class="pd-dropzone" id="pdDropzone">
+                        <label class="pd-dropzone-label" for="pdFileInput">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32" style="color:var(--accent2)">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <span class="pd-dropzone-text">Click to upload or drag &amp; drop</span>
+                            <span class="pd-dropzone-hint">PNG, JPG, PDF, AI, EPS — any format</span>
+                            <input type="file" id="pdFileInput" accept="image/*,application/pdf,.ai,.eps,.svg" style="display:none" onchange="pdHandleFileInput(this)" />
+                        </label>
+                    </div>
+                    <button class="pd-cart-btn" id="pdAddCartBtn" onclick="pdAddToCart()" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                        </svg>
+                        Add to Cart
+                    </button>
+                    <p style="font-size:0.76rem;color:var(--muted);margin-top:8px;text-align:center;">Upload your file above to enable Add to Cart</p>
+                </div>
+
+            </div><!-- /pd-body -->
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         QUOTE SUCCESS MODAL
+    ═══════════════════════════════════════ -->
+    <div class="modal-overlay" id="quoteSuccessModal" onclick="if(event.target===this)closeQuoteSuccess()" style="z-index:400;">
+        <div class="modal" style="max-width:400px;text-align:center;">
+            <div class="quote-success-icon">
+                <svg class="quote-success-checkmark" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
             </div>
-            <p class="section-label">Order For</p>
-            <p style="font-size:0.9rem;margin-bottom:1rem;" id="proofPayEmail">—</p>
-            <p class="section-label">Items</p>
-            <div id="proofPayItems"></div>
-            <div class="modal-price-summary" style="margin:1rem 0;">
-                <div class="mps-row total-row"><span>Total Due:</span><span class="amount" id="proofPayTotal">$0.00</span></div>
-            </div>
-            <p class="section-label">Payment Information</p>
-            <div id="proof-pay-card-container" style="min-height:80px;margin-bottom:1rem;"></div>
-            <button class="btn-primary" id="proofPayBtn" onclick="submitProofPayment()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
-                Pay Now
+            <h3 style="font-family:'Playfair Display',serif;font-size:1.35rem;margin-bottom:10px;">Quote Request Sent!</h3>
+            <p style="font-size:0.9rem;color:var(--muted);line-height:1.6;margin-bottom:0.5rem;">
+                Thanks, <strong id="quoteSuccessName" style="color:var(--text)"></strong>! We received your request for
+            </p>
+            <p style="font-size:0.92rem;font-weight:700;color:var(--accent2);margin-bottom:1.25rem;" id="quoteSuccessProduct"></p>
+            <p style="font-size:0.88rem;color:var(--muted);line-height:1.6;margin-bottom:1.5rem;">
+                We'll review your details and send a custom quote to your email shortly. Keep an eye on your inbox!
+            </p>
+            <button class="btn-primary" style="margin-top:0;" onclick="closeQuoteSuccess()">
+                Done
             </button>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         SIGN IN MODAL
-    ════════════════════════════════════════════════════════ -->
+    <!-- Sign In Modal -->
     <div class="modal-overlay" id="signInModal" onclick="closeSignInIfOutside(event)">
         <div class="modal signin-modal" id="signInBox">
             <div class="modal-header">
@@ -197,8 +644,12 @@
             </div>
 
             <div style="display:flex;margin-bottom:1.5rem;border-bottom:2px solid var(--border);">
-                <button id="tabCustomer" onclick="switchTab('customer')" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid var(--accent2);margin-bottom:-2px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;color:var(--accent2);cursor:pointer;">Customer</button>
-                <button id="tabAdmin" onclick="switchTab('admin')" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;color:var(--muted);cursor:pointer;">Admin</button>
+                <button id="tabCustomer" onclick="switchTab('customer')" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid var(--accent2);margin-bottom:-2px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;color:var(--accent2);cursor:pointer;">
+                    Customer
+                </button>
+                <button id="tabAdmin" onclick="switchTab('admin')" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;color:var(--muted);cursor:pointer;">
+                    Admin
+                </button>
             </div>
 
             <div id="signInForm">
@@ -224,132 +675,73 @@
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         ACCOUNT MODAL
-    ════════════════════════════════════════════════════════ -->
+    <!-- Account Modal -->
     <div class="modal-overlay" id="accountModal" onclick="closeAccountIfOutside(event)">
-        <div class="modal account-modal" id="accountBox">
+        <div class="modal" id="accountBox">
             <div class="modal-header">
                 <div>
                     <h2>Your Account</h2>
-                    <p class="signin-subtitle">Profile, orders, and proofs</p>
+                    <p class="signin-subtitle">Profile and order history</p>
                 </div>
                 <button class="close-btn" onclick="closeAccount()">&times;</button>
             </div>
-
-            <!-- Profile -->
             <div style="margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;gap:12px;">
                 <div>
-                    <div style="font-size:0.9rem;color:var(--muted);">Signed in as</div>
+                    <div style="font-size:0.9rem;color:var(--muted)">Signed in as</div>
                     <div style="font-weight:700;margin-top:0.25rem;" id="accountEmail">—</div>
                 </div>
                 <button class="btn-ghost" onclick="signOut()" style="font-size:0.85rem;padding:6px 10px;border-radius:8px;">Sign out</button>
             </div>
-
-            <!-- Update account -->
-            <details class="account-details-section">
-                <summary>Update Email or Password</summary>
-                <div style="padding:12px 0 4px;">
-                    <div class="form-group" style="margin-bottom:0.8rem;">
-                        <label class="form-label">Current Password <span>*</span></label>
-                        <input type="password" id="updateCurrentPw" placeholder="••••••••" />
-                    </div>
-                    <div class="form-group" style="margin-bottom:0.8rem;">
-                        <label class="form-label">New Email <span style="color:var(--muted);font-weight:400;">(leave blank to keep)</span></label>
-                        <input type="email" id="updateNewEmail" placeholder="new@email.com" />
-                    </div>
-                    <div class="form-group" style="margin-bottom:0.8rem;">
-                        <label class="form-label">New Password <span style="color:var(--muted);font-weight:400;">(leave blank to keep)</span></label>
-                        <input type="password" id="updateNewPw" placeholder="••••••••" />
-                    </div>
-                    <p id="accountUpdateMsg" style="font-size:0.82rem;margin-bottom:8px;min-height:18px;"></p>
-                    <button onclick="handleUpdateAccount()" style="padding:9px 20px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:0.88rem;font-weight:600;cursor:pointer;">Save Changes</button>
-                </div>
-            </details>
-
-            <h3 style="margin-top:1.25rem;margin-bottom:0.5rem;">Orders &amp; Quotes</h3>
+            <h3 style="margin-top:0.5rem;margin-bottom:0.5rem;">Recent Orders</h3>
             <div id="accountOrdersList"><div style="color:var(--muted);padding:1rem;">No orders to show.</div></div>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         ADMIN PANEL OVERLAY
-    ════════════════════════════════════════════════════════ -->
+    <!-- Admin Panel Overlay -->
     <div class="overlay" id="adminOverlay" onclick="closeAdminIfOutside(event)">
         <div class="admin-panel" id="adminPanelBox">
             <div class="admin-panel-header">
                 <div style="display:flex;align-items:center;gap:12px;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="color:rgba(255,255,255,0.9)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="color:rgba(255,255,255,0.9)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                     <span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#fff;font-weight:700;">Admin Dashboard</span>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <!-- Tab switcher -->
-                    <div class="admin-tab-bar">
-                        <button class="admin-tab active" id="adminTabProducts" onclick="switchAdminTab('products')">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
-                            Products
-                        </button>
-                        <button class="admin-tab" id="adminTabOrders" onclick="switchAdminTab('orders')">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /></svg>
-                            Orders
-                        </button>
-                    </div>
                     <button class="admin-signout-btn" onclick="adminSignOut()">Sign Out</button>
                     <button class="close-btn" style="color:rgba(255,255,255,0.8);" onclick="closeAdminPanel()">&times;</button>
                 </div>
             </div>
-
             <div class="admin-body">
-                <!-- ── PRODUCTS PANE ── -->
-                <div class="admin-products-pane" id="adminProductsPane" style="display:grid;">
-                    <!-- LEFT: list -->
-                    <div class="admin-list-col">
-                        <div class="admin-list-header">
-                            <span style="font-weight:600;font-size:0.95rem;">Products <span class="admin-count-badge" id="adminCountBadge">0</span></span>
-                            <button class="admin-add-btn" onclick="adminStartAdd()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
-                                Add Product
-                            </button>
-                        </div>
-                        <div class="admin-product-list" id="adminProductList">
-                            <div style="padding:2rem;color:var(--muted);text-align:center;">Loading…</div>
-                        </div>
+                <div class="admin-list-col">
+                    <div class="admin-list-header">
+                        <span style="font-weight:600;font-size:0.95rem;">Products <span class="admin-count-badge" id="adminCountBadge">0</span></span>
+                        <button class="admin-add-btn" onclick="adminStartAdd()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                            Add Product
+                        </button>
                     </div>
-                    <!-- RIGHT: edit form -->
-                    <div class="admin-edit-col">
-                        <div class="admin-placeholder" id="adminPlaceholder">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="opacity:0.25;margin-bottom:12px;"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
-                            <p style="font-size:0.9rem;color:var(--muted);">Select a product to edit or create a new one</p>
-                        </div>
-                        <form class="admin-edit-form" id="adminEditForm" onsubmit="adminSaveProduct(event)" style="display:none;">
-                            <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:4px;">
-                                <span style="font-size:16px;font-weight:700;" id="adminFormTitle">New Product</span>
-                                <span class="admin-mode-badge new" id="adminModeBadge">NEW</span>
-                            </div>
-                            <input type="hidden" id="adminProductId" />
-                            <div class="admin-field">
-                                <label>Product Name *</label>
-                                <input type="text" id="adminFName" placeholder="e.g. Business Cards – 14pt" required />
-                            </div>
-                            <div class="admin-field">
-                                <label>Description</label>
-                                <textarea id="adminFDesc" rows="3" placeholder="Short product description"></textarea>
-                            </div>
-                            <div class="admin-field">
-                                <label>Base Price ($) *</label>
-                                <input type="number" id="adminFPrice" step="0.01" min="0" placeholder="0.00" required />
-                            </div>
-                            <div style="display:flex;gap:10px;margin-top:8px;">
-                                <button type="button" class="admin-cancel-btn" onclick="adminCancelEdit()">Cancel</button>
-                                <button type="submit" class="admin-save-btn" id="adminSaveBtn">Save Product</button>
-                            </div>
-                        </form>
+                    <div class="admin-product-list" id="adminProductList">
+                        <div style="padding:2rem;color:var(--muted);text-align:center;">Loading…</div>
                     </div>
                 </div>
-
-                <!-- ── ORDERS PANE ── -->
-                <div class="admin-orders-pane" id="adminOrdersPane" style="display:none;flex-direction:column;">
-                    <!-- Rendered dynamically by adminRenderOrders() -->
+                <div class="admin-edit-col">
+                    <div class="admin-placeholder" id="adminPlaceholder">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="opacity:0.25;margin-bottom:12px;"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
+                        <p style="font-size:0.9rem;color:var(--muted);">Select a product to edit or create a new one</p>
+                    </div>
+                    <form class="admin-edit-form" id="adminEditForm" onsubmit="adminSaveProduct(event)" style="display:none;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+                            <span style="font-size:16px;font-weight:700;" id="adminFormTitle">New Product</span>
+                            <span class="admin-mode-badge new" id="adminModeBadge">NEW</span>
+                        </div>
+                        <input type="hidden" id="adminProductId" />
+                        <div class="admin-field"><label>Product Name *</label><input type="text" id="adminFName" placeholder="e.g. Business Cards – 14pt" required /></div>
+                        <div class="admin-field"><label>Description</label><textarea id="adminFDesc" rows="3" placeholder="Short product description"></textarea></div>
+                        <div class="admin-field"><label>Base Price ($) *</label><input type="number" id="adminFPrice" step="0.01" min="0" placeholder="0.00" required /></div>
+                        <div style="display:flex;gap:10px;margin-top:8px;">
+                            <button type="button" class="admin-cancel-btn" onclick="adminCancelEdit()">Cancel</button>
+                            <button type="submit" class="admin-save-btn" id="adminSaveBtn">Save Product</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -359,7 +751,7 @@
     <div class="modal-overlay" id="adminDeleteModal" onclick="if(event.target===this)adminCloseDeleteModal()" style="z-index:600;">
         <div class="modal" style="max-width:360px;text-align:center;">
             <div style="width:52px;height:52px;border-radius:50%;background:rgba(239,68,68,0.1);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
             </div>
             <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;">Delete Product?</h3>
             <p id="adminDeleteMsg" style="font-size:14px;color:var(--muted);margin-bottom:24px;line-height:1.5;">This cannot be undone.</p>
@@ -372,5 +764,26 @@
 
     <div class="toast" id="toast"></div>
     <script src="app.js"></script>
+    <script>
+        // Wire up dropzone drag events after DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            pdSetupDropzoneEvents();
+
+            // Keep estimated total synced when qty stepper is used
+            const origPdChangeQty = window.pdChangeQty;
+            window.pdChangeQty = function(delta) {
+                origPdChangeQty(delta);
+                pdUpdateTotal();
+            };
+        });
+
+        // Patch openProductDetail to init the total after setting product
+        const _origOpenPD = window.openProductDetail;
+        window.openProductDetail = function(id) {
+            _origOpenPD(id);
+            pdUpdateTotal();
+            pdSetupDropzoneEvents();
+        };
+    </script>
 </body>
 </html>
