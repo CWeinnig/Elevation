@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;   
 using Elevation.Models;
 using Elevation.DTOs;
 
@@ -27,9 +29,14 @@ public class FilesController : ControllerBase
 
     // POST: api/Files/upload
     // orderId is optional — file can be uploaded before the order exists
+    [Authorize]
     [HttpPost("upload")]
-    public async Task<IActionResult> UploadFile(IFormFile file, [FromForm] int? orderId)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadFile([FromForm] FileUploadRequest request)
     {
+        var file = request.File;
+        var orderId = request.OrderId;
+
         if (file == null || file.Length == 0)
             return BadRequest("No file received.");
 
@@ -43,10 +50,23 @@ public class FilesController : ControllerBase
 
         if (orderId.HasValue)
         {
-            var orderExists = await _context.Orders.AnyAsync(o => o.Id == orderId.Value);
-            if (!orderExists) return BadRequest("Invalid Order ID.");
-        }
+        var order = await _context.Orders.FindAsync(orderId.Value);
+        if (order == null)
+        return BadRequest("Invalid Order ID.");
 
+        var currentUserIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+         if (currentUserIdStr == null)
+        return Unauthorized();
+
+        var currentUserId = int.Parse(currentUserIdStr);
+
+         if (!User.IsInRole("Admin"))
+        {
+        if (!order.UserId.HasValue || order.UserId.Value != currentUserId)
+            return Forbid();
+        }
+        
+        }
         var uploadsRoot = Path.Combine(_env.WebRootPath, "uploads");
         if (!Directory.Exists(uploadsRoot)) Directory.CreateDirectory(uploadsRoot);
 
@@ -79,11 +99,23 @@ public class FilesController : ControllerBase
     }
 
     // GET: api/Files/order/{orderId}
+    [Authorize]
     [HttpGet("order/{orderId}")]
     public async Task<ActionResult<IEnumerable<UploadedFileDto>>> GetFilesForOrder(int orderId)
     {
-        var orderExists = await _context.Orders.AnyAsync(o => o.Id == orderId);
-        if (!orderExists) return NotFound($"Order {orderId} not found.");
+        var order = await _context.Orders.FindAsync(orderId);
+    if (order == null) return NotFound($"Order {orderId} not found.");
+
+    if (!User.IsInRole("Admin"))
+    {
+    var currentUserIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (currentUserIdStr == null) return Unauthorized();
+
+    var currentUserId = int.Parse(currentUserIdStr);
+
+    if (!order.UserId.HasValue || order.UserId.Value != currentUserId)
+        return Forbid();
+    }
 
         var files = await _context.UploadedFiles
             .Where(f => f.OrderId == orderId)
@@ -102,11 +134,38 @@ public class FilesController : ControllerBase
     }
 
     // GET: api/Files/{id}/download
+    [Authorize]
     [HttpGet("{id}/download")]
     public async Task<IActionResult> DownloadFile(int id)
     {
         var uploadedFile = await _context.UploadedFiles.FindAsync(id);
         if (uploadedFile == null) return NotFound($"File {id} not found.");
+
+     if (uploadedFile.OrderId.HasValue)
+    {
+        var order = await _context.Orders.FindAsync(uploadedFile.OrderId.Value);
+        if (order == null)
+            return NotFound("Order not found for this file.");
+
+        if (!User.IsInRole("Admin"))
+        {
+            var currentUserIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (currentUserIdStr == null)
+                return Unauthorized();
+
+            var currentUserId = int.Parse(currentUserIdStr);
+
+            if (!order.UserId.HasValue || order.UserId.Value != currentUserId)
+                return Forbid();
+        }
+    }
+    else
+    {
+        // If file isn't attached to an order, only admins can access it
+        if (!User.IsInRole("Admin"))
+            return Forbid();
+    }
+
 
         var physicalPath = Path.Combine(_env.WebRootPath, "uploads", uploadedFile.StoredFileName);
         if (!System.IO.File.Exists(physicalPath))
@@ -134,4 +193,10 @@ public class FilesController : ControllerBase
             _ => "application/octet-stream"
         };
     }
+}
+
+public class FileUploadRequest
+{
+    public IFormFile File { get; set; } = default!;
+    public int? OrderId { get; set; }
 }

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
 using Elevation.DTOs;
@@ -39,7 +40,8 @@ public class ProductsController : ControllerBase
         if (product == null) return NotFound();
         return MapToDto(product);
     }
-
+   
+    [Authorize(Roles = "Admin")]
     [HttpPost]
     public async Task<ActionResult<ProductDto>> PostProduct(CreateProductDto dto)
     {
@@ -69,7 +71,8 @@ public class ProductsController : ControllerBase
         await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, MapToDto(product));
     }
-
+   
+    [Authorize(Roles = "Admin")]
     [HttpPut("{id}")]
     public async Task<IActionResult> PutProduct(int id, UpdateProductDto dto)
     {
@@ -111,6 +114,7 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeactivateProduct(int id)
     {

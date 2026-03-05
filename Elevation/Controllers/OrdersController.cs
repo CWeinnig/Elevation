@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
 using Elevation.DTOs;
@@ -137,17 +139,46 @@ public class OrdersController : ControllerBase
     }
 
     // ── Get by ID ─────────────────────────────────────────────────────────────
-
+    [Authorize]
     [HttpGet("{id}")]
     public async Task<ActionResult<OrderDto>> GetOrder(int id)
     {
         var order = await GetOrderWithIncludes(id);
         if (order == null) return NotFound();
+       
+    if (!IsAdmin())
+    {
+        var currentUserId = CurrentUserId();
+        if (currentUserId == null) return Unauthorized();
+
+        if (!order.UserId.HasValue || order.UserId.Value != currentUserId.Value)
+            return Forbid();
+    }
+       
         return MapToDto(order);
     }
 
-    // ── Get all orders for user ───────────────────────────────────────────────
+    // ── Get my orders (logged-in user) ────────────────────────────────────────
+    [Authorize]
+    [HttpGet("me")]
+    public async Task<ActionResult<IEnumerable<OrderDto>>> GetMyOrders()
+    {
+    var currentUserId = CurrentUserId();
+    if (currentUserId == null) return Unauthorized();
 
+    var orders = await _context.Orders
+        .Include(o => o.Items).ThenInclude(i => i.Product)
+        .Include(o => o.Items).ThenInclude(i => i.Options)
+        .Include(o => o.UploadedFiles)
+        .Where(o => o.UserId == currentUserId)
+        .OrderByDescending(o => o.CreatedAt)
+        .ToListAsync();
+
+    return Ok(orders.Select(MapToDto));
+    }
+
+    // ── Get all orders for user ───────────────────────────────────────────────
+    [Authorize(Roles = "Admin")]
     [HttpGet("user/{userId}")]
     public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrdersForUser(int userId)
     {
@@ -162,8 +193,10 @@ public class OrdersController : ControllerBase
         return Ok(orders.Select(MapToDto));
     }
 
+
     // ── Get all orders (admin) ────────────────────────────────────────────────
 
+    [Authorize(Roles = "Admin")]
     [HttpGet]
     public async Task<ActionResult<IEnumerable<OrderDto>>> GetAllOrders()
     {
@@ -178,7 +211,7 @@ public class OrdersController : ControllerBase
     }
 
     // ── Update status (admin) ─────────────────────────────────────────────────
-
+    [Authorize(Roles = "Admin")]
     [HttpPut("{id}/status")]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateOrderStatusDto dto)
     {
@@ -217,6 +250,7 @@ public class OrdersController : ControllerBase
 
     // ── Upload proof (admin) ──────────────────────────────────────────────────
 
+    [Authorize(Roles = "Admin")]
     [HttpPost("{id}/proof")]
     public async Task<IActionResult> UploadProof(int id, IFormFile file)
     {
@@ -276,7 +310,7 @@ public class OrdersController : ControllerBase
     // ── Approve proof (customer) ──────────────────────────────────────────────
     // Called by the customer from their account page.
     // Uses the order's PaymentToken to authenticate without requiring a login header.
-
+    
     [HttpPost("{id}/approve-proof")]
     public async Task<IActionResult> ApproveProof(int id, [FromBody] ApproveProofDto dto)
     {
@@ -347,7 +381,7 @@ public class OrdersController : ControllerBase
         });
     }
 
-
+    [Authorize]
     [HttpPost("{id}/customer-approve")]
     public async Task<IActionResult> CustomerApproveProof(int id, [FromBody] CustomerApproveDto dto)
     {
@@ -359,6 +393,9 @@ public class OrdersController : ControllerBase
 
         if (order.Status != "ProofSent")
             return BadRequest($"Cannot approve proof — current status is '{order.Status}'.");
+
+        var currentUserId = CurrentUserId();
+         if (currentUserId == null) return Unauthorized();
 
         // Auth: verify the requesting user actually owns this order
         if (!order.UserId.HasValue || order.UserId.Value != dto.UserId)
@@ -442,6 +479,13 @@ public class OrdersController : ControllerBase
         return string.IsNullOrEmpty(order.GuestEmail) ? null : order.GuestEmail;
     }
 
+private int? CurrentUserId()
+{
+    var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+    return int.TryParse(claim, out var id) ? id : (int?)null;
+}
+
+private bool IsAdmin() => User.IsInRole("Admin");
     private static OrderDto MapToDto(Order order) => new OrderDto
     {
         Id = order.Id,

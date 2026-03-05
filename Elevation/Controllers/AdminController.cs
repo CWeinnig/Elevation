@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
@@ -6,6 +7,7 @@ namespace Elevation.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin")]
 public class AdminController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -19,6 +21,7 @@ public class AdminController : ControllerBase
 
     // POST api/admin/login
     // Credentials are read from appsettings.json: Admin:Username / Admin:Password
+    [AllowAnonymous]
     [HttpPost("login")]
     public IActionResult Login([FromBody] AdminLoginRequest req)
     {
@@ -37,7 +40,7 @@ public class AdminController : ControllerBase
         return Ok(new { success = true, token });
     }
 
-    // GET api/admin/products  — kept for potential future admin-only reporting.
+    // GET api/admin/products  ï¿½ kept for potential future admin-only reporting.
     // The frontend now uses GET /api/Products for the admin list so options are always included.
     [HttpGet("products")]
     public async Task<ActionResult<IEnumerable<object>>> GetProducts()

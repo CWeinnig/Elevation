@@ -1,4 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;      
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
 using Elevation.DTOs;
@@ -46,9 +50,60 @@ public class UsersController : ControllerBase
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             return Unauthorized("Invalid email or password.");
 
+    var claims = new List<Claim>
+    {
+        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new Claim(ClaimTypes.Name, user.Name),
+        new Claim(ClaimTypes.Email, user.Email),
+        new Claim(ClaimTypes.Role, user.Role)
+    };
+
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    var principal = new ClaimsPrincipal(identity);
+
+    await HttpContext.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        principal,
+        new AuthenticationProperties
+        {
+            IsPersistent = true,
+            ExpiresUtc = DateTimeOffset.UtcNow.AddDays(7)
+        }
+    );
+
         return Ok(MapToDto(user));
     }
+    [Authorize]
+    [HttpGet("me")]
+    public async Task<ActionResult<UserDto>> Me()
+    {
+    if (!User.Identity?.IsAuthenticated ?? true)
+        return Unauthorized();
 
+    var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userId == null)
+        return Unauthorized();
+
+    var user = await _context.Users.FindAsync(int.Parse(userId));
+    if (user == null)
+        return NotFound();
+
+    return Ok(MapToDto(user));
+    
+    }
+   
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+    await HttpContext.SignOutAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme
+    );
+
+    return Ok(new { message = "Logged out successfully." });
+    }
+   
+    [Authorize(Roles = "Admin")]
     [HttpGet("{id}")]
     public async Task<ActionResult<UserDto>> GetUser(int id)
     {
@@ -59,11 +114,20 @@ public class UsersController : ControllerBase
 
     // PUT /api/Users/{id}
     // Requires current password to confirm identity before any change.
+    [Authorize]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserDto dto)
     {
         var user = await _context.Users.FindAsync(id);
         if (user == null) return NotFound();
+
+        var claimId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (claimId == null) return Unauthorized();
+
+        var currentUserId = int.Parse(claimId);
+
+        if (currentUserId != id && !User.IsInRole("Admin"))
+            return Forbid();
 
         // Always require current password
         if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
