@@ -1,6 +1,6 @@
 const API_BASE = 'http://localhost:5249';
 const SQUARE_APP_ID = 'sandbox-sq0idb-BwePK0oD1PR0SnDJLs3w5g';
-const SQUARE_LOCATION_ID = 'YOUR_SANDBOX_LOCATION_ID';
+const SQUARE_LOCATION_ID = 'L77QZ2Q33YZSD';
 
 let products = [];
 let cart = [];
@@ -88,6 +88,8 @@ function toggleTheme() {
 
 async function init() {
     loadSessionFromStorage();
+    loadQuotesFromStorage();
+    updateQuotesBadge();
     try {
         const res = await fetch(`${API_BASE}/api/Products`);
         if (!res.ok) throw new Error('Failed to load products');
@@ -113,21 +115,268 @@ function renderProducts() {
             <div class="product-name">${p.name}</div>
             <div class="product-price">$${p.basePrice.toFixed(2)}</div>
             <div class="product-unit">per unit (starting price)</div>
-            <button class="btn-add-quote" onclick="quickAddToQuote(${p.id})">
-                <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-                Add to Cart
+            <button class="btn-view-details" onclick="openProductDetail(${p.id})">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
+                View Details
             </button>
         </div>
     `).join('');
 }
 
-function quickAddToQuote(productId) {
+// ── Product Detail Modal ───────────────────────────────────────────────────────
+
+let pdCurrentProduct = null;
+let pdCurrentQty = 1;
+let pdCurrentMode = 'quote';
+let pdCurrentFile = null;
+let pdCurrentFileData = null;
+
+// Submitted quotes history (local storage)
+let submittedQuotes = [];
+
+function openProductDetail(productId) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
-    addToCart({ productId: product.id, name: product.name, basePrice: product.basePrice, selectedOptions: [], qty: 1, imageData: null, imageName: null, imageFile: null });
-    const card = document.getElementById('card-' + productId);
-    card.classList.add('active-card');
-    setTimeout(() => card.classList.remove('active-card'), 1500);
+    pdCurrentProduct = product;
+    pdCurrentQty = 1;
+    pdCurrentMode = 'quote';
+    pdCurrentFile = null;
+    pdCurrentFileData = null;
+    document.getElementById('pdName').textContent = product.name;
+    document.getElementById('pdPrice').textContent = `$${product.basePrice.toFixed(2)} per unit`;
+    document.getElementById('pdDesc').textContent = product.description || 'Professional printing and design service.';
+    document.getElementById('pdQtyDisplay').textContent = pdCurrentQty;
+    pdSetMode('quote');
+    document.getElementById('pdQuoteName').value = currentUser?.name || '';
+    document.getElementById('pdQuoteEmail').value = currentUser?.email || '';
+    document.getElementById('pdQuoteNotes').value = '';
+    pdResetDropzone();
+    pdUpdateTotal();
+    document.getElementById('productDetailModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeProductDetail() {
+    document.getElementById('productDetailModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+function closeProductDetailIfOutside(e) {
+    if (e.target === document.getElementById('productDetailModal')) closeProductDetail();
+}
+
+function pdChangeQty(delta) {
+    pdCurrentQty = Math.max(1, pdCurrentQty + delta);
+    document.getElementById('pdQtyDisplay').textContent = pdCurrentQty;
+    pdUpdateTotal();
+}
+
+function pdUpdateTotal() {
+    if (!pdCurrentProduct) return;
+    const el = document.getElementById('pdEstTotal');
+    if (el) el.textContent = `$${(pdCurrentProduct.basePrice * pdCurrentQty).toFixed(2)}`;
+}
+
+function pdSetMode(mode) {
+    pdCurrentMode = mode;
+    const quoteCard = document.getElementById('pdModeQuote');
+    const uploadCard = document.getElementById('pdModeUpload');
+    const quoteSection = document.getElementById('pdQuoteSection');
+    const uploadSection = document.getElementById('pdUploadSection');
+    if (mode === 'quote') {
+        quoteCard.classList.add('active'); uploadCard.classList.remove('active');
+        quoteSection.style.display = 'block'; uploadSection.style.display = 'none';
+    } else {
+        uploadCard.classList.add('active'); quoteCard.classList.remove('active');
+        uploadSection.style.display = 'block'; quoteSection.style.display = 'none';
+    }
+}
+
+async function pdSubmitQuote() {
+    const name = document.getElementById('pdQuoteName').value.trim();
+    const email = document.getElementById('pdQuoteEmail').value.trim();
+    const notes = document.getElementById('pdQuoteNotes').value.trim();
+    if (!name) { showToast('Please enter your name.'); return; }
+    if (!email) { showToast('Please enter your email.'); return; }
+
+    const btn = document.getElementById('pdQuoteBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="pd-btn-spinner"></span>Sending…';
+
+    try {
+        const fileIds = [];
+        // Upload any attached file
+        if (pdCurrentFile) {
+            const fd = new FormData(); fd.append('file', pdCurrentFile);
+            const r = await fetch(`${API_BASE}/api/Files/upload`, { method: 'POST', body: fd });
+            if (r.ok) { const u = await r.json(); fileIds.push(u.fileId); }
+        }
+
+        const orderRes = await fetch(`${API_BASE}/api/Orders`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: currentUser?.id ?? 0,
+                guestEmail: currentUser ? '' : email,
+                squarePaymentId: '',
+                isQuoteRequest: true,
+                designNotes: notes,
+                fileIds,
+                items: [{ productId: pdCurrentProduct.id, quantity: pdCurrentQty, options: [] }]
+            })
+        });
+
+        if (!orderRes.ok) { showToast('Could not submit quote. Please try again.'); return; }
+
+        // Save to local history
+        submittedQuotes.unshift({
+            id: Date.now(),
+            productId: pdCurrentProduct.id,
+            productName: pdCurrentProduct.name,
+            quantity: pdCurrentQty,
+            name, email, notes,
+            estimatedPrice: pdCurrentProduct.basePrice * pdCurrentQty,
+            submittedAt: new Date().toISOString(),
+            status: 'Pending'
+        });
+        saveQuotesToStorage();
+        updateQuotesBadge();
+        closeProductDetail();
+        showQuoteSuccess(name, pdCurrentProduct.name);
+    } catch { showToast('Something went wrong. Please try again.'); }
+    finally {
+        btn.disabled = false;
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Request Quote`;
+    }
+}
+
+function showQuoteSuccess(name, productName) {
+    document.getElementById('quoteSuccessName').textContent = name.split(' ')[0];
+    document.getElementById('quoteSuccessProduct').textContent = productName;
+    document.getElementById('quoteSuccessModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+function closeQuoteSuccess() {
+    document.getElementById('quoteSuccessModal').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+// ── Quotes History ────────────────────────────────────────────────────────────
+
+function saveQuotesToStorage() { try { localStorage.setItem('submittedQuotes', JSON.stringify(submittedQuotes)); } catch { } }
+function loadQuotesFromStorage() {
+    try { const raw = localStorage.getItem('submittedQuotes'); if (raw) submittedQuotes = JSON.parse(raw); } catch { }
+}
+function updateQuotesBadge() {
+    const badge = document.getElementById('quoteHistoryBadge');
+    if (!badge) return;
+    badge.textContent = submittedQuotes.length;
+    badge.style.display = submittedQuotes.length > 0 ? 'inline-flex' : 'none';
+}
+function openQuotesHistory() {
+    renderQuotesHistory();
+    document.getElementById('quotesHistoryOverlay').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+function closeQuotesHistory() { document.getElementById('quotesHistoryOverlay').classList.remove('show'); document.body.style.overflow = ''; }
+function closeQuotesHistoryIfOutside(e) { if (e.target === document.getElementById('quotesHistoryOverlay')) closeQuotesHistory(); }
+
+function renderQuotesHistory() {
+    const list = document.getElementById('quotesHistoryList');
+    if (submittedQuotes.length === 0) {
+        list.innerHTML = `<div class="empty-quote" style="padding:3rem 1rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="opacity:0.3;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;">
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+                <rect x="9" y="3" width="6" height="4" rx="1"/>
+                <path d="M9 12h6M9 16h4"/>
+            </svg>
+            No quote requests yet.<br>
+            <span style="font-size:0.82rem;">Request a quote on any product to see it here.</span>
+        </div>`;
+        return;
+    }
+    list.innerHTML = submittedQuotes.map((q, i) => {
+        const date = new Date(q.submittedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+        const statusColor = q.status === 'Pending' ? '#f59e0b' : q.status === 'Reviewed' ? '#7c3aed' : '#10b981';
+        return `<div class="qh-card" style="animation-delay:${i * 0.04}s">
+            <div class="qh-card-top">
+                <div class="qh-product-name">${escHtml(q.productName)}</div>
+                <span class="qh-status-badge" style="background:${statusColor}22;color:${statusColor};">${escHtml(q.status)}</span>
+            </div>
+            <div class="qh-meta">
+                <span>Qty: <strong>${q.quantity}</strong></span>
+                <span style="color:var(--accent);font-weight:700;">Est. $${q.estimatedPrice.toFixed(2)}</span>
+            </div>
+            ${q.notes ? `<div class="qh-notes">"${escHtml(q.notes)}"</div>` : ''}
+            <div class="qh-footer">
+                <span class="qh-date">${date}</span>
+                <button class="qh-remove-btn" onclick="removeQuote(${q.id})">Remove</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+function removeQuote(id) {
+    submittedQuotes = submittedQuotes.filter(q => q.id !== id);
+    saveQuotesToStorage(); updateQuotesBadge(); renderQuotesHistory();
+}
+
+// ── Dropzone (product detail upload mode) ─────────────────────────────────────
+
+function pdHandleFileInput(input) { const file = input.files[0]; if (file) pdSetFile(file); }
+
+function pdSetFile(file) {
+    pdCurrentFile = file;
+    const reader = new FileReader();
+    reader.onload = e => { pdCurrentFileData = e.target.result; pdRenderDropzone(file.name); };
+    reader.readAsDataURL(file);
+}
+
+function pdRenderDropzone(fileName) {
+    const dz = document.getElementById('pdDropzone');
+    dz.innerHTML = `<div class="pd-file-attached">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28" style="color:#7c3aed"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <div class="pd-file-name">${escHtml(fileName)}</div>
+        <button class="pd-file-remove" onclick="pdResetDropzone()">✕ Remove</button>
+    </div>`;
+    document.getElementById('pdAddCartBtn').disabled = false;
+}
+
+function pdResetDropzone() {
+    pdCurrentFile = null; pdCurrentFileData = null;
+    const dz = document.getElementById('pdDropzone');
+    dz.innerHTML = `<label class="pd-dropzone-label" for="pdFileInput">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32" style="color:var(--accent2)"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span class="pd-dropzone-text">Click to upload or drag &amp; drop</span>
+        <span class="pd-dropzone-hint">PNG, JPG, PDF, AI, EPS — any format</span>
+        <input type="file" id="pdFileInput" accept="image/*,application/pdf,.ai,.eps,.svg" style="display:none" onchange="pdHandleFileInput(this)" />
+    </label>`;
+    const btn = document.getElementById('pdAddCartBtn');
+    if (btn) btn.disabled = true;
+    pdSetupDropzoneEvents();
+}
+
+function pdSetupDropzoneEvents() {
+    const dz = document.getElementById('pdDropzone');
+    if (!dz) return;
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragging'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('dragging'));
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragging'); const f = e.dataTransfer.files[0]; if (f) pdSetFile(f); });
+}
+
+function pdAddToCart() {
+    if (!pdCurrentProduct) return;
+    addToCart({
+        productId: pdCurrentProduct.id,
+        name: pdCurrentProduct.name,
+        basePrice: pdCurrentProduct.basePrice,
+        selectedOptions: [],
+        qty: pdCurrentQty,
+        imageData: pdCurrentFileData,
+        imageName: pdCurrentFile?.name || null,
+        imageFile: pdCurrentFile || null
+    });
+    const card = document.getElementById('card-' + pdCurrentProduct.id);
+    if (card) { card.classList.add('active-card'); setTimeout(() => card.classList.remove('active-card'), 1500); }
+    closeProductDetail();
 }
 
 function addToCart(item) {
@@ -218,11 +467,10 @@ async function openRequestModal() {
 }
 
 function updateCheckoutMode() {
-    const isQuote = document.getElementById('checkoutModeQuote').checked;
-    document.getElementById('designNotesSection').style.display = isQuote ? 'block' : 'none';
-    document.getElementById('paymentSection').style.display = isQuote ? 'none' : 'block';
-    document.getElementById('submitOrderBtn').textContent = isQuote ? 'Send Quote Request' : 'Submit Order';
-    if (!isQuote && !squareCard) initSquare();
+    document.getElementById('designNotesSection').style.display = 'none';
+    document.getElementById('paymentSection').style.display = 'block';
+    document.getElementById('submitOrderBtn').textContent = 'Submit Order';
+    if (!squareCard) initSquare();
 }
 
 function renderModalOrderDetails() {
@@ -258,7 +506,7 @@ async function initSquare() {
 async function submitQuote() {
     const name = document.getElementById('contactName').value.trim();
     const email = document.getElementById('contactEmail').value.trim();
-    const isQuote = document.getElementById('checkoutModeQuote').checked;
+    const isQuote = false;
     const designNotes = document.getElementById('designNotes').value.trim();
 
     if (!name) { showToast('Please enter your name.'); return; }
@@ -318,9 +566,9 @@ async function submitQuote() {
         closeRequestModal(); cart = []; updateBadge();
 
         if (isQuote) {
-            showToast(`Quote submitted! We'll send you a proof to review. ✓`);
+            showToast(`Quote submitted! We'll be in touch with a proof soon. ✓`);
         } else {
-            showToast(`Order placed successfully! ✓`);
+            showToast(`Order placed successfully! You'll receive a confirmation email. ✓`);
         }
     } catch (err) {
         showToast('Something went wrong. Please try again.');
@@ -337,7 +585,7 @@ async function checkPaymentReturn() {
 
     if (params.get('order') && params.get('paid') === 'true') {
         cart = []; updateBadge();
-        showToast(`Order placed successfully! ✓`);
+        showToast(`Order placed successfully! You'll receive a confirmation email. ✓`);
         window.history.replaceState({}, document.title, window.location.pathname);
         return;
     }
@@ -415,7 +663,7 @@ async function submitProofPayment() {
         if (!completeRes.ok) { showToast('Could not record payment. Please contact us.'); return; }
 
         closeProofPayModal();
-        showToast(`Payment confirmed for your order! ✓`);
+        showToast(`Payment confirmed! We'll begin production right away. ✓`);
         pendingPayOrderId = null; pendingPayToken = null; pendingPayInfo = null;
     } catch {
         showToast('Something went wrong. Please try again.');
@@ -427,9 +675,9 @@ async function submitProofPayment() {
 // ── Sign In / Auth — UNIFIED ──────────────────────────────────────────────────
 
 function openSignIn() {
-    // If already logged in, always show their account modal (admin or not)
     if (currentUser) { openAccount(); return; }
-    switchToSignIn();
+    document.getElementById('signInForm').style.display = 'block';
+    document.getElementById('createAccountForm').style.display = 'none';
     document.getElementById('signInModal').classList.add('show');
     document.body.style.overflow = 'hidden';
 }
@@ -472,6 +720,9 @@ async function handleSignIn() {
         if (res.status === 401) { showToast('Invalid email or password.'); return; }
         if (!res.ok) throw new Error();
         currentUser = await res.json();
+        submittedQuotes = [];
+        try { localStorage.removeItem('submittedQuotes'); } catch { }
+        updateQuotesBadge();
         try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch { }
         closeSignIn();
         updateNavAfterLogin();
@@ -567,7 +818,7 @@ function renderAccountOrders(orders) {
         <div class="order-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
                 <div>
-                    <div style="font-weight:700;">${isQuote ? '📋 Quote' : '📦 Order'}</div>
+                    <div style="font-weight:700;">${isQuote ? '📋 Quote' : '📦 Order'} #${o.id}</div>
                     <div style="font-size:0.85rem;color:var(--muted);">${new Date(o.createdAt).toLocaleString()}</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -629,7 +880,10 @@ async function handleUpdateAccount() {
 
 function signOut() {
     try { localStorage.removeItem('currentUser'); } catch { }
+    try { localStorage.removeItem('submittedQuotes'); } catch { }
     currentUser = null;
+    submittedQuotes = [];
+    updateQuotesBadge();
     const btn = document.getElementById('authNavBtn');
     const textNode = [...btn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
     if (textNode) textNode.textContent = ' Sign In';
