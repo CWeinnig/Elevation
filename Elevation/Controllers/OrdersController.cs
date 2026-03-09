@@ -109,6 +109,7 @@ public class OrdersController : ControllerBase
             Status = initialStatus,
             TotalPrice = totalPrice,
             DesignNotes = dto.DesignNotes,
+            CustomerPhone = dto.CustomerPhone ?? string.Empty,
             IsQuoteRequest = dto.IsQuoteRequest,
             PaymentToken = dto.IsQuoteRequest ? Guid.NewGuid().ToString("N") : string.Empty,
             CreatedAt = DateTime.UtcNow,
@@ -167,6 +168,7 @@ public class OrdersController : ControllerBase
     public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrdersForUser(int userId)
     {
         var orders = await _context.Orders
+            .Include(o => o.User)
             .Include(o => o.Items).ThenInclude(i => i.Product)
             .Include(o => o.Items).ThenInclude(i => i.Options)
             .Include(o => o.UploadedFiles)
@@ -183,6 +185,7 @@ public class OrdersController : ControllerBase
     public async Task<ActionResult<IEnumerable<OrderDto>>> GetAllOrders()
     {
         var orders = await _context.Orders
+            .Include(o => o.User)
             .Include(o => o.Items).ThenInclude(i => i.Product)
             .Include(o => o.Items).ThenInclude(i => i.Options)
             .Include(o => o.UploadedFiles)
@@ -484,6 +487,7 @@ public class OrdersController : ControllerBase
 
     private async Task<Order?> GetOrderWithIncludes(int id) =>
         await _context.Orders
+            .Include(o => o.User)
             .Include(o => o.Items).ThenInclude(i => i.Product)
             .Include(o => o.Items).ThenInclude(i => i.Options)
             .Include(o => o.UploadedFiles)
@@ -509,7 +513,11 @@ public class OrdersController : ControllerBase
         TotalPrice = order.TotalPrice,
         CreatedAt = order.CreatedAt,
         DesignNotes = order.DesignNotes,
+        CustomerPhone = order.CustomerPhone,
         IsQuoteRequest = order.IsQuoteRequest,
+        // Resolve name and email from the linked User or fall back to guest email
+        CustomerName = order.User?.Name ?? string.Empty,
+        CustomerEmail = order.User?.Email ?? order.GuestEmail,
         Items = order.Items?.Select(i => new OrderItemDto
         {
             Id = i.Id,

@@ -38,6 +38,27 @@ function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Formats a phone string into (555) 123-4567 style as the user types
+function formatPhone(raw) {
+    const digits = raw.replace(/\D/g, '').slice(0, 10);
+    if (digits.length <= 3) return digits.length ? `(${digits}` : '';
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function attachPhoneFormatter(inputId) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    el.addEventListener('input', function () {
+        const pos = this.selectionStart;
+        const prev = this.value;
+        this.value = formatPhone(this.value);
+        // Restore cursor roughly — if user is deleting, keep position
+        const delta = this.value.length - prev.length;
+        this.setSelectionRange(pos + delta, pos + delta);
+    });
+}
+
 function showToast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg; t.classList.add('show');
@@ -90,6 +111,9 @@ async function init() {
     loadSessionFromStorage();
     loadQuotesFromStorage();
     updateQuotesBadge();
+    // Attach live phone formatters to all phone inputs
+    attachPhoneFormatter('contactPhone');
+    attachPhoneFormatter('pdQuotePhone');
     try {
         const res = await fetch(`${API_BASE}/api/Products`);
         if (!res.ok) throw new Error('Failed to load products');
@@ -266,6 +290,32 @@ function saveQuotesToStorage() { try { localStorage.setItem('submittedQuotes', J
 function loadQuotesFromStorage() {
     try { const raw = localStorage.getItem('submittedQuotes'); if (raw) submittedQuotes = JSON.parse(raw); } catch { }
 }
+async function syncQuotesFromServer() {
+    if (!currentUser) return;
+    try {
+        const res = await fetch(`${API_BASE}/api/Orders/user/${currentUser.id}`);
+        if (!res.ok) return;
+        const orders = await res.json();
+        // Rebuild submittedQuotes from real server orders (quote requests only)
+        submittedQuotes = orders
+            .filter(o => o.isQuoteRequest)
+            .map(o => ({
+                id: o.id,
+                productId: o.items?.[0]?.productId ?? 0,
+                productName: o.items?.[0]?.productName ?? 'Order #' + o.id,
+                quantity: o.items?.[0]?.quantity ?? 1,
+                name: currentUser.name,
+                email: currentUser.email,
+                notes: o.designNotes || '',
+                estimatedPrice: o.totalPrice,
+                submittedAt: o.createdAt,
+                status: o.status
+            }));
+        saveQuotesToStorage();
+    } catch { /* silently fail — stale local data is fine as fallback */ }
+    updateQuotesBadge();
+}
+
 function updateQuotesBadge() {
     const badge = document.getElementById('quoteHistoryBadge');
     if (!badge) return;
@@ -506,8 +556,10 @@ async function initSquare() {
 async function submitQuote() {
     const name = document.getElementById('contactName').value.trim();
     const email = document.getElementById('contactEmail').value.trim();
+    const phone = document.getElementById('contactPhone')?.value.trim() || '';
     const isQuote = false;
-    const designNotes = document.getElementById('designNotes').value.trim();
+    // Direct orders use 'customDetails', quote flow uses 'designNotes'
+    const designNotes = (document.getElementById('customDetails')?.value.trim() || document.getElementById('designNotes')?.value.trim() || '');
 
     if (!name) { showToast('Please enter your name.'); return; }
     if (!email) { showToast('Please enter your email.'); return; }
@@ -551,7 +603,8 @@ async function submitQuote() {
                 guestEmail: currentUser ? '' : email,
                 squarePaymentId,
                 isQuoteRequest: isQuote,
-                designNotes: isQuote ? designNotes : '',
+                designNotes: designNotes,
+                customerPhone: phone,
                 fileIds,
                 items: cart.map(item => ({
                     productId: item.productId,
@@ -720,12 +773,11 @@ async function handleSignIn() {
         if (res.status === 401) { showToast('Invalid email or password.'); return; }
         if (!res.ok) throw new Error();
         currentUser = await res.json();
-        submittedQuotes = [];
-        try { localStorage.removeItem('submittedQuotes'); } catch { }
-        updateQuotesBadge();
         try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch { }
         closeSignIn();
         updateNavAfterLogin();
+        // Sync View Quotes panel from server orders so it survives logout/login
+        await syncQuotesFromServer();
         if (isAdmin()) {
             showToast(`Welcome back, ${currentUser.name}! Admin access granted.`);
         } else {
@@ -772,6 +824,8 @@ function loadSessionFromStorage() {
         if (raw) {
             currentUser = JSON.parse(raw);
             updateNavAfterLogin();
+            // Refresh quotes from server in the background on page load
+            syncQuotesFromServer();
         }
     } catch { }
 }
@@ -811,7 +865,7 @@ function renderAccountOrders(orders) {
         const proofSection = proofFiles.length > 0 ? `
             <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:rgba(6,182,212,0.08);border-radius:8px;border:1px solid rgba(6,182,212,0.2);">
                 <div style="font-size:0.78rem;font-weight:700;color:var(--accent);margin-bottom:6px;">📄 Proofs Ready for Review</div>
-                ${proofFiles.map(f => `<a href="${API_BASE}${f.downloadUrl}" target="_blank" style="font-size:0.82rem;color:var(--accent2);display:block;margin-bottom:3px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
+                ${proofFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName.replace('PROOF_', '')}" style="font-size:0.82rem;color:var(--accent2);display:block;margin-bottom:3px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
                 ${o.status === 'ProofSent' ? `<button onclick="approveProof(${o.id})" style="margin-top:8px;padding:6px 14px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.82rem;font-weight:600;cursor:pointer;">✓ Approve Proof & Get Payment Link</button>` : ''}
             </div>` : '';
         return `
@@ -941,7 +995,7 @@ function adminRenderList() {
     document.getElementById('adminCountBadge').textContent = adminProducts.length;
     if (adminProducts.length === 0) { list.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No products yet.</div>'; return; }
     list.innerHTML = adminProducts.map((p, i) => `
-        <div class="admin-product-card ${p.id === adminActiveId ? 'active' : ''}" style="animation-delay:${i * 0.03}s" onclick="adminStartEdit(${p.id})">
+        <div class="admin-product-card ${p.id === adminActiveId ? 'active' : ''}" data-product-id="${p.id}" style="animation-delay:${i * 0.03}s" onclick="adminStartEdit(${p.id})">
             <div style="flex:1;min-width:0;">
                 <div class="admin-product-name">${escHtml(p.name)}</div>
                 <div class="admin-product-desc">${escHtml(p.description || '')}</div>
@@ -970,7 +1024,8 @@ function adminStartAdd() {
     document.getElementById('adminPlaceholder').style.display = 'none';
     document.getElementById('adminEditForm').style.display = 'flex';
     document.getElementById('adminFName').focus();
-    adminRenderList();
+    // Update active highlight without re-rendering the whole list
+    document.querySelectorAll('.admin-product-card').forEach(c => c.classList.remove('active'));
 }
 
 function adminStartEdit(id) {
@@ -986,7 +1041,8 @@ function adminStartEdit(id) {
     document.getElementById('adminPlaceholder').style.display = 'none';
     document.getElementById('adminEditForm').style.display = 'flex';
     document.getElementById('adminFName').focus();
-    adminRenderList();
+    // Update active highlight without re-rendering the whole list
+    document.querySelectorAll('.admin-product-card').forEach(c => c.classList.toggle('active', c.dataset.productId == id));
 }
 
 function adminCancelEdit() {
@@ -1095,7 +1151,7 @@ function adminRenderOrders() {
 function adminOrderCard(o) {
     const sc = getStatusColor(o.status);
     const label = o.isQuoteRequest ? '📋 Quote' : '📦 Order';
-    const contact = o.guestEmail || `User #${o.userId}`;
+    const contact = o.customerName || o.customerEmail || o.guestEmail || `User #${o.userId}`;
     return `
         <div class="admin-order-card" onclick="adminSelectOrder(${o.id})">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -1138,7 +1194,11 @@ async function adminSelectOrder(id) {
 
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Contact</div>
-                <div>${order.guestEmail || `Registered User #${order.userId}`}</div>
+                ${order.customerName ? `<div style="font-weight:600;">${escHtml(order.customerName)}</div>` : ''}
+                <div style="font-size:13px;margin-top:2px;">
+                    <a href="mailto:${escHtml(order.customerEmail || order.guestEmail || '')}" style="color:var(--accent2);">${escHtml(order.customerEmail || order.guestEmail || `User #${order.userId}`)}</a>
+                </div>
+                ${order.customerPhone ? `<div style="font-size:13px;margin-top:2px;color:var(--muted);">${escHtml(formatPhone(order.customerPhone))}</div>` : ''}
             </div>
 
             <div class="admin-detail-section">
@@ -1155,20 +1215,20 @@ async function adminSelectOrder(id) {
 
             ${order.designNotes ? `
             <div class="admin-detail-section">
-                <div class="admin-detail-label">Design Notes</div>
+                <div class="admin-detail-label">${order.isQuoteRequest ? 'Design Notes' : 'Special Instructions'}</div>
                 <div style="font-size:13px;font-style:italic;color:var(--muted);">"${escHtml(order.designNotes)}"</div>
             </div>` : ''}
 
             ${designFiles.length > 0 ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Customer Files</div>
-                ${designFiles.map(f => `<a href="${API_BASE}${f.downloadUrl}" target="_blank" style="display:block;font-size:13px;color:var(--accent2);margin-bottom:4px;">⬇ ${f.originalFileName}</a>`).join('')}
+                ${designFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName}" style="display:block;font-size:13px;color:var(--accent2);margin-bottom:4px;">⬇ ${f.originalFileName}</a>`).join('')}
             </div>` : ''}
 
             ${proofFiles.length > 0 ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Uploaded Proofs</div>
-                ${proofFiles.map(f => `<a href="${API_BASE}${f.downloadUrl}" target="_blank" style="display:block;font-size:13px;color:var(--accent);margin-bottom:4px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
+                ${proofFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName.replace('PROOF_', '')}" style="display:block;font-size:13px;color:var(--accent);margin-bottom:4px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
             </div>` : ''}
 
             ${order.isQuoteRequest && ['QuoteRequested', 'ProofSent'].includes(order.status) ? `
@@ -1270,7 +1330,7 @@ function adminRenderFiles(files) {
                                 <div style="font-size:11px;color:var(--muted);">${new Date(f.uploadedAt).toLocaleString()}</div>
                             </div>
                             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${tagColor};color:${tagText};white-space:nowrap;">${tagLabel}</span>
-                            <a href="${API_BASE}${f.downloadUrl}" target="_blank" style="padding:6px 12px;background:var(--accent2);color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⬇ Download</a>
+                            <a href="${f.downloadUrl}" download="${escHtml(displayName)}" style="padding:6px 12px;background:var(--accent2);color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⬇ Download</a>
                         </div>`;
     }).join('')}
             </div>

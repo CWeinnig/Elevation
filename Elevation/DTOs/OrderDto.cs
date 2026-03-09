@@ -1,4 +1,5 @@
 ﻿namespace Elevation.DTOs;
+
 using System;
 using System.Collections.Generic;
 
@@ -9,6 +10,7 @@ public class CreateOrderDto
     public string SquarePaymentId { get; set; } = string.Empty;
     public string DesignNotes { get; set; } = string.Empty;
     public bool IsQuoteRequest { get; set; } = false;
+    public string CustomerPhone { get; set; } = string.Empty;
     public List<CreateOrderItemDto> Items { get; set; } = new();
     public List<int> FileIds { get; set; } = new();
 }
@@ -35,7 +37,9 @@ public class OrderDto
     public DateTime CreatedAt { get; set; }
     public string DesignNotes { get; set; } = string.Empty;
     public bool IsQuoteRequest { get; set; }
-    // PaymentToken intentionally excluded from standard responses
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerEmail { get; set; } = string.Empty;
+    public string CustomerPhone { get; set; } = string.Empty;
     public List<OrderItemDto> Items { get; set; } = new();
     public List<UploadedFileDto> UploadedFiles { get; set; } = new();
 }

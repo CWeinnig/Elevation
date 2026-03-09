@@ -11,6 +11,7 @@ public interface IEmailService
     Task SendProofReadyAsync(string toEmail, int orderId, string proofDownloadUrl);
     Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total);
     Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl);
+    Task SendEmailConfirmationAsync(string toEmail, string name, string confirmUrl);
 }
 
 public class EmailLineItem
@@ -121,6 +122,23 @@ public class SmtpEmailService : IEmailService
             },
             ctaText: "Complete Payment",
             ctaUrl: paymentUrl
+        );
+        return SendAsync(toEmail, subject, body);
+    }
+
+    public Task SendEmailConfirmationAsync(string toEmail, string name, string confirmUrl)
+    {
+        var subject = "Confirm your email – D & J's Elevated Designs";
+        var body = BuildSimple(
+            heading: "Almost there — confirm your email! ✉️",
+            paragraphs: new[]
+            {
+                $"Hi {WebUtility.HtmlEncode(name)}, thanks for creating an account with D &amp; J's Elevated Designs!",
+                "Click the button below to verify your email address and activate your account. This link expires after use.",
+                "If you didn't create this account, you can safely ignore this email."
+            },
+            ctaText: "Confirm My Email",
+            ctaUrl: confirmUrl
         );
         return SendAsync(toEmail, subject, body);
     }

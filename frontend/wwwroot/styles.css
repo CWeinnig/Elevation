@@ -898,6 +898,8 @@ input[type="password"] {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    height: 88vh;
+    min-height: 560px;
     max-height: 92vh;
     box-shadow: 0 24px 80px rgba(0,0,0,0.4);
     animation: fadeUp 0.3s ease;
@@ -976,6 +978,7 @@ input[type="password"] {
 
 .admin-body {
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;

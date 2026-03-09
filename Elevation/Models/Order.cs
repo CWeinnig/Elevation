@@ -2,11 +2,6 @@
 
 namespace Elevation.Models;
 
-/// <summary>
-/// Order status flow:
-///   Standard order:  Paid → Completed
-///   Design request:  QuoteRequested → ProofSent → ProofApproved → AwaitingPayment → Paid → Completed
-/// </summary>
 public class Order
 {
     public int Id { get; set; }
@@ -22,6 +17,8 @@ public class Order
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public string DesignNotes { get; set; } = string.Empty;
+
+    public string CustomerPhone { get; set; } = string.Empty;
 
     public bool IsQuoteRequest { get; set; } = false;
 
