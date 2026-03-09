@@ -38,9 +38,8 @@ function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Formats a phone string into (555) 123-4567 style as the user types
 function formatPhone(raw) {
-    const digits = raw.replace(/\D/g, '').slice(0, 10);
+    const digits = String(raw).replace(/\D/g, '').slice(0, 10);
     if (digits.length <= 3) return digits.length ? `(${digits}` : '';
     if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
@@ -53,7 +52,6 @@ function attachPhoneFormatter(inputId) {
         const pos = this.selectionStart;
         const prev = this.value;
         this.value = formatPhone(this.value);
-        // Restore cursor roughly — if user is deleting, keep position
         const delta = this.value.length - prev.length;
         this.setSelectionRange(pos + delta, pos + delta);
     });
@@ -111,7 +109,6 @@ async function init() {
     loadSessionFromStorage();
     loadQuotesFromStorage();
     updateQuotesBadge();
-    // Attach live phone formatters to all phone inputs
     attachPhoneFormatter('contactPhone');
     attachPhoneFormatter('pdQuotePhone');
     try {
@@ -134,46 +131,117 @@ function renderProducts() {
         grid.innerHTML = '<div style="color:var(--muted);padding:2rem;grid-column:1/-1;">No products available.</div>';
         return;
     }
-    grid.innerHTML = products.map(p => `
+    grid.innerHTML = products.map(p => {
+        const tiers = p.priceTiers || [];
+        const startPrice = tiers.length ? tiers[0].price : p.basePrice;
+        const priceLabel = tiers.length ? `From $${startPrice.toFixed(2)}` : `$${startPrice.toFixed(2)}`;
+        return `
         <div class="product-card" id="card-${p.id}">
             <div class="product-name">${p.name}</div>
-            <div class="product-price">$${p.basePrice.toFixed(2)}</div>
-            <div class="product-unit">per unit (starting price)</div>
+            <div class="product-price">${priceLabel}</div>
+            <div class="product-unit">${tiers.length ? 'price varies by quantity' : 'per unit (starting price)'}</div>
             <button class="btn-view-details" onclick="openProductDetail(${p.id})">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
                 View Details
             </button>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 // ── Product Detail Modal ───────────────────────────────────────────────────────
 
-let pdCurrentProduct = null;
-let pdCurrentQty = 1;
+// Track selected options (set of productOptionId or index for options without id)
+let pdSelectedOptions = new Set();
 let pdCurrentMode = 'quote';
-let pdCurrentFile = null;
-let pdCurrentFileData = null;
-
-// Submitted quotes history (local storage)
-let submittedQuotes = [];
 
 function openProductDetail(productId) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
     pdCurrentProduct = product;
-    pdCurrentQty = 1;
-    pdCurrentMode = 'quote';
     pdCurrentFile = null;
     pdCurrentFileData = null;
+    pdSelectedOptions = new Set();
+    pdOptionModifiers = {}; // reset add-on selections
+
+    const tiers = (product.priceTiers || []).slice().sort((a, b) => a.minQty - b.minQty);
+    pdCurrentQty = tiers.length ? tiers[0].minQty : 1;
+
     document.getElementById('pdName').textContent = product.name;
-    document.getElementById('pdPrice').textContent = `$${product.basePrice.toFixed(2)} per unit`;
     document.getElementById('pdDesc').textContent = product.description || 'Professional printing and design service.';
-    document.getElementById('pdQtyDisplay').textContent = pdCurrentQty;
+
+    // Update header price tag
+    const headerPrice = document.getElementById('pdPrice');
+    if (headerPrice) {
+        headerPrice.textContent = tiers.length
+            ? `From $${tiers[0].price.toFixed(2)}`
+            : `$${product.basePrice.toFixed(2)} per unit`;
+    }
+
+    // Clear the old price section — no tier table, dropdown handles it
+    const priceEl = document.getElementById('pdPriceSection');
+    priceEl.innerHTML = '';
+
+    // Qty control — styled custom dropdown for tiers, +/- stepper for flat
+    const qtySection = document.getElementById('pdQtySection');
+    if (tiers.length) {
+        qtySection.innerHTML = `
+            <label style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:6px;display:block;">Quantity &amp; Price</label>
+            <div style="position:relative;">
+                <select id="pdQtySelect" onchange="pdSelectTierQty(this.value)" style="
+                    width:100%;padding:10px 14px;
+                    border:1px solid var(--border);border-radius:8px;
+                    background:var(--bg);color:var(--text);
+                    font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;
+                    cursor:pointer;appearance:none;-webkit-appearance:none;
+                    background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23888%22 stroke-width=%222%22><polyline points=%226 9 12 15 18 9%22/></svg>');
+                    background-repeat:no-repeat;background-position:right 12px center;">
+                    ${tiers.map((t, i) => {
+            const next = tiers[i + 1];
+            const label = next ? `${t.minQty} – ${next.minQty - 1}` : `${t.minQty}+`;
+            return `<option value="${t.minQty}">${label} &nbsp;&nbsp; $${t.price.toFixed(2)}</option>`;
+        }).join('')}
+                </select>
+            </div>`;
+    } else {
+        qtySection.innerHTML = `
+            <label style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:6px;display:block;">Quantity</label>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button onclick="pdChangeQty(-1)" style="width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>
+                <span id="pdQtyDisplay" style="font-size:18px;font-weight:700;min-width:32px;text-align:center;">${pdCurrentQty}</span>
+                <button onclick="pdChangeQty(1)" style="width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</button>
+            </div>`;
+    }
+
+    // Add-on options
+    const optionsSection = document.getElementById('pdOptionsSection');
+    const opts = product.options || [];
+    if (opts.length) {
+        const groups = {};
+        opts.forEach(o => { if (!groups[o.optionName]) groups[o.optionName] = []; groups[o.optionName].push(o); });
+        optionsSection.style.display = 'block';
+        optionsSection.innerHTML = `<div style="font-size:13px;font-weight:700;margin-bottom:10px;">Add-Ons</div>` +
+            Object.entries(groups).map(([groupName, groupOpts]) => `
+                <div style="margin-bottom:10px;">
+                    ${Object.keys(groups).length > 1 ? `<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">${escHtml(groupName)}</div>` : ''}
+                    ${groupOpts.map(o => `
+                        <label style="display:flex;align-items:center;gap:8px;padding:7px 0;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);">
+                            <input type="checkbox" value="${o.id}" onchange="pdToggleOption(${o.id}, ${o.priceModifier}, this.checked)"
+                                style="width:16px;height:16px;accent-color:var(--accent2);cursor:pointer;flex-shrink:0;" />
+                            <span>${escHtml(o.optionValue)}</span>
+                            ${o.priceModifier ? `<span style="margin-left:auto;color:var(--accent2);font-weight:600;white-space:nowrap;">+$${o.priceModifier.toFixed(2)}</span>` : ''}
+                        </label>`).join('')}
+                </div>`).join('');
+    } else {
+        optionsSection.style.display = 'none';
+        optionsSection.innerHTML = '';
+    }
+
     pdSetMode('quote');
     document.getElementById('pdQuoteName').value = currentUser?.name || '';
     document.getElementById('pdQuoteEmail').value = currentUser?.email || '';
     document.getElementById('pdQuoteNotes').value = '';
+    const phoneEl = document.getElementById('pdQuotePhone');
+    if (phoneEl) phoneEl.value = '';
     pdResetDropzone();
     pdUpdateTotal();
     document.getElementById('productDetailModal').classList.add('show');
@@ -181,24 +249,58 @@ function openProductDetail(productId) {
 }
 
 function closeProductDetail() {
-    document.getElementById('productDetailModal').classList.remove('show');
+    const modal = document.getElementById('productDetailModal');
+    if (modal) modal.classList.remove('show');
     document.body.style.overflow = '';
+    pdOptionModifiers = {};
 }
 
 function closeProductDetailIfOutside(e) {
     if (e.target === document.getElementById('productDetailModal')) closeProductDetail();
 }
 
-function pdChangeQty(delta) {
-    pdCurrentQty = Math.max(1, pdCurrentQty + delta);
-    document.getElementById('pdQtyDisplay').textContent = pdCurrentQty;
+function pdSelectTierQty(val) {
+    pdCurrentQty = parseInt(val);
+    pdUpdateTotal();
+}
+
+function pdGetActiveTierPrice() {
+    const tiers = (pdCurrentProduct?.priceTiers || []).slice().sort((a, b) => a.minQty - b.minQty);
+    let price = pdCurrentProduct?.basePrice || 0;
+    for (const t of tiers) { if (pdCurrentQty >= t.minQty) price = t.price; }
+    return price;
+}
+
+let pdOptionModifiers = {}; // id → priceModifier
+
+function pdToggleOption(id, modifier, checked) {
+    if (checked) pdOptionModifiers[id] = modifier;
+    else delete pdOptionModifiers[id];
     pdUpdateTotal();
 }
 
 function pdUpdateTotal() {
     if (!pdCurrentProduct) return;
     const el = document.getElementById('pdEstTotal');
-    if (el) el.textContent = `$${(pdCurrentProduct.basePrice * pdCurrentQty).toFixed(2)}`;
+    if (!el) return;
+    const tiers = pdCurrentProduct.priceTiers || [];
+    const addons = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
+    let total;
+    if (tiers.length) {
+        // Tier price is the flat total for that qty band — addons are per-order on top
+        total = pdGetActiveTierPrice() + addons;
+    } else {
+        // Flat per-unit price × qty + addons
+        total = (pdCurrentProduct.basePrice * pdCurrentQty) + addons;
+    }
+    el.textContent = `$${total.toFixed(2)}`;
+}
+
+function pdChangeQty(delta) {
+    pdCurrentQty = Math.max(1, pdCurrentQty + delta);
+    const el = document.getElementById('pdQtyDisplay');
+    if (el) el.textContent = pdCurrentQty;
+    pdUpdateTotal();
 }
 
 function pdSetMode(mode) {
@@ -219,9 +321,14 @@ function pdSetMode(mode) {
 async function pdSubmitQuote() {
     const name = document.getElementById('pdQuoteName').value.trim();
     const email = document.getElementById('pdQuoteEmail').value.trim();
+    const phone = document.getElementById('pdQuotePhone')?.value.trim() || '';
     const notes = document.getElementById('pdQuoteNotes').value.trim();
     if (!name) { showToast('Please enter your name.'); return; }
     if (!email) { showToast('Please enter your email.'); return; }
+    if (!notes) { showToast('Please describe your design — this helps us prepare your quote.'); return; }
+
+    // Collect selected add-on option IDs from pdOptionModifiers
+    const selectedOptionIds = Object.keys(pdOptionModifiers).map(id => ({ productOptionId: parseInt(id) }));
 
     const btn = document.getElementById('pdQuoteBtn');
     btn.disabled = true;
@@ -229,9 +336,10 @@ async function pdSubmitQuote() {
 
     try {
         const fileIds = [];
-        // Upload any attached file
-        if (pdCurrentFile) {
-            const fd = new FormData(); fd.append('file', pdCurrentFile);
+        const quoteFile = document.getElementById('pdQuoteFileInput')?.files[0];
+        const fileToUpload = quoteFile || pdCurrentFile;
+        if (fileToUpload) {
+            const fd = new FormData(); fd.append('file', fileToUpload);
             const r = await fetch(`${API_BASE}/api/Files/upload`, { method: 'POST', body: fd });
             if (r.ok) { const u = await r.json(); fileIds.push(u.fileId); }
         }
@@ -244,13 +352,16 @@ async function pdSubmitQuote() {
                 squarePaymentId: '',
                 isQuoteRequest: true,
                 designNotes: notes,
+                customerPhone: phone,
                 fileIds,
-                items: [{ productId: pdCurrentProduct.id, quantity: pdCurrentQty, options: [] }]
+                items: [{ productId: pdCurrentProduct.id, quantity: pdCurrentQty, options: selectedOptionIds }]
             })
         });
 
         if (!orderRes.ok) { showToast('Could not submit quote. Please try again.'); return; }
 
+        const addonTotal = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
+        const baseTotal = pdCurrentProduct.priceTiers?.length ? pdGetActiveTierPrice() : pdCurrentProduct.basePrice * pdCurrentQty;
         // Save to local history
         submittedQuotes.unshift({
             id: Date.now(),
@@ -258,7 +369,7 @@ async function pdSubmitQuote() {
             productName: pdCurrentProduct.name,
             quantity: pdCurrentQty,
             name, email, notes,
-            estimatedPrice: pdCurrentProduct.basePrice * pdCurrentQty,
+            estimatedPrice: baseTotal + addonTotal,
             submittedAt: new Date().toISOString(),
             status: 'Pending'
         });
@@ -414,12 +525,20 @@ function pdSetupDropzoneEvents() {
 
 function pdAddToCart() {
     if (!pdCurrentProduct) return;
+    const tiers = pdCurrentProduct.priceTiers || [];
+    const selectedOpts = Object.entries(pdOptionModifiers).map(([id, mod]) => {
+        const opt = (pdCurrentProduct.options || []).find(o => o.id == id);
+        return opt ? { productOptionId: opt.id, optionName: opt.optionName, optionValue: opt.optionValue, priceModifier: mod } : null;
+    }).filter(Boolean);
+    // For tiered products: cart qty = 1, basePrice = tier total (the price is for the whole batch)
+    // For flat products: cart qty = pdCurrentQty, basePrice = unit price
+    const isTiered = tiers.length > 0;
     addToCart({
         productId: pdCurrentProduct.id,
-        name: pdCurrentProduct.name,
-        basePrice: pdCurrentProduct.basePrice,
-        selectedOptions: [],
-        qty: pdCurrentQty,
+        name: pdCurrentProduct.name + (isTiered ? ` (qty ${pdCurrentQty})` : ''),
+        basePrice: isTiered ? pdGetActiveTierPrice() : pdCurrentProduct.basePrice,
+        selectedOptions: selectedOpts,
+        qty: isTiered ? 1 : pdCurrentQty,
         imageData: pdCurrentFileData,
         imageName: pdCurrentFile?.name || null,
         imageFile: pdCurrentFile || null
@@ -558,7 +677,6 @@ async function submitQuote() {
     const email = document.getElementById('contactEmail').value.trim();
     const phone = document.getElementById('contactPhone')?.value.trim() || '';
     const isQuote = false;
-    // Direct orders use 'customDetails', quote flow uses 'designNotes'
     const designNotes = (document.getElementById('customDetails')?.value.trim() || document.getElementById('designNotes')?.value.trim() || '');
 
     if (!name) { showToast('Please enter your name.'); return; }
@@ -665,9 +783,16 @@ function openProofPaymentModal(info) {
     document.getElementById('proofPayEmail').textContent = info.email;
     document.getElementById('proofPayTotal').textContent = `$${Number(info.totalPrice).toFixed(2)}`;
     const itemsEl = document.getElementById('proofPayItems');
-    itemsEl.innerHTML = (info.items || []).map(i =>
-        `<div class="order-detail-card"><div><div style="font-weight:700;">${i.productName}</div><div class="order-detail-qty">Qty: ${i.quantity}</div></div><div style="font-weight:700;">$${(i.unitPrice * i.quantity).toFixed(2)}</div></div>`
-    ).join('');
+    itemsEl.innerHTML = (info.items || []).map(i => {
+        const baseTotal = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
+        const addonTotal = (i.options || []).reduce((s, o) => s + Number(o.priceModifier), 0);
+        const lineTotal = baseTotal + addonTotal;
+        const qtyLabel = i.isTiered ? `Qty: ${i.quantity} (flat rate)` : `${i.quantity} × $${Number(i.unitPrice).toFixed(2)}`;
+        const optionLines = (i.options || []).map(o =>
+            `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)}</span></div>`
+        ).join('');
+        return `<div class="order-detail-card"><div><div style="font-weight:700;">${i.productName}</div><div class="order-detail-qty">${qtyLabel}</div>${optionLines}</div><div style="font-weight:700;">$${lineTotal.toFixed(2)}</div></div>`;
+    }).join('');
     document.getElementById('proofPayModal').classList.add('show');
     document.body.style.overflow = 'hidden';
     initProofPaySquare();
@@ -880,7 +1005,14 @@ function renderAccountOrders(orders) {
                     <span style="font-weight:700;color:var(--accent);">$${o.totalPrice.toFixed(2)}</span>
                 </div>
             </div>
-            <div style="margin-top:0.5rem;font-size:0.9rem;">${o.items.map(it => `<div style="margin-bottom:4px;">${it.quantity}× ${it.productName} <span style="color:var(--muted);">— $${(it.unitPrice * it.quantity).toFixed(2)}</span></div>`).join('')}</div>
+            <div style="margin-top:0.5rem;font-size:0.9rem;">${o.items.map(it => {
+            const baseTotal = it.isTiered ? it.unitPrice : it.unitPrice * it.quantity;
+            const addonTotal = (it.options || []).reduce((s, o) => s + Number(o.priceModifier), 0);
+            const lineTotal = baseTotal + addonTotal;
+            const qtyLabel = it.isTiered ? `${it.quantity}×` : `${it.quantity}×`;
+            const addonText = (it.options || []).filter(o => o.priceModifier !== 0).map(o => `+${o.optionValue}`).join(', ');
+            return `<div style="margin-bottom:4px;">${qtyLabel} ${it.productName}${addonText ? ` <span style="color:var(--muted);font-size:0.8rem;">(${addonText})</span>` : ''} <span style="color:var(--muted);">— $${lineTotal.toFixed(2)}</span></div>`;
+        }).join('')}</div>
             ${o.designNotes ? `<div style="margin-top:6px;font-size:0.8rem;color:var(--muted);font-style:italic;">Notes: ${escHtml(o.designNotes)}</div>` : ''}
             ${proofSection}
         </div>`;
@@ -1021,10 +1153,11 @@ function adminStartAdd() {
     document.getElementById('adminFormTitle').textContent = 'New Product';
     const badge = document.getElementById('adminModeBadge');
     badge.textContent = 'NEW'; badge.className = 'admin-mode-badge new';
+    adminRenderTierRows([]);
+    adminRenderOptionRows([]);
     document.getElementById('adminPlaceholder').style.display = 'none';
     document.getElementById('adminEditForm').style.display = 'flex';
     document.getElementById('adminFName').focus();
-    // Update active highlight without re-rendering the whole list
     document.querySelectorAll('.admin-product-card').forEach(c => c.classList.remove('active'));
 }
 
@@ -1038,11 +1171,123 @@ function adminStartEdit(id) {
     document.getElementById('adminFormTitle').textContent = 'Edit Product';
     const badge = document.getElementById('adminModeBadge');
     badge.textContent = 'EDITING'; badge.className = 'admin-mode-badge edit';
+    adminRenderTierRows(p.priceTiers || []);
+    adminRenderOptionRows(p.options || []);
     document.getElementById('adminPlaceholder').style.display = 'none';
     document.getElementById('adminEditForm').style.display = 'flex';
     document.getElementById('adminFName').focus();
-    // Update active highlight without re-rendering the whole list
     document.querySelectorAll('.admin-product-card').forEach(c => c.classList.toggle('active', c.dataset.productId == id));
+}
+
+// ── Tier rows ─────────────────────────────────────────────────────────────────
+
+function adminRenderTierRows(tiers) {
+    const c = document.getElementById('adminTiersContainer');
+    const empty = document.getElementById('adminTiersEmpty');
+    const header = document.getElementById('adminTierHeader');
+    c.innerHTML = '';
+    if (tiers.length === 0) {
+        if (empty) empty.style.display = '';
+        if (header) header.style.display = 'none';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+    if (header) header.style.display = 'grid';
+    tiers.forEach((t, i) => c.appendChild(adminMakeTierRow(t.minQty, t.price, i)));
+}
+
+function adminMakeTierRow(minQty = '', price = '', index = Date.now()) {
+    const row = document.createElement('div');
+    row.className = 'admin-tier-row';
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center;';
+    row.innerHTML = `
+        <input type="number" class="tier-qty" min="1" step="1" placeholder="Qty" value="${minQty}"
+            style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;width:100%;" />
+        <input type="number" class="tier-price" min="0" step="0.01" placeholder="Price" value="${price}"
+            style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;width:100%;" />
+        <button type="button" onclick="adminRemoveTierRow(this)"
+            style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:16px;padding:4px;line-height:1;">✕</button>`;
+    return row;
+}
+
+function adminAddTierRow() {
+    const c = document.getElementById('adminTiersContainer');
+    const empty = document.getElementById('adminTiersEmpty');
+    const header = document.getElementById('adminTierHeader');
+    if (empty) empty.style.display = 'none';
+    if (header) header.style.display = 'grid';
+    c.appendChild(adminMakeTierRow());
+}
+
+function adminRemoveTierRow(btn) {
+    btn.closest('.admin-tier-row').remove();
+    const c = document.getElementById('adminTiersContainer');
+    if (!c.querySelector('.admin-tier-row')) {
+        document.getElementById('adminTiersEmpty').style.display = '';
+        document.getElementById('adminTierHeader').style.display = 'none';
+    }
+}
+
+function adminCollectTiers() {
+    return [...document.querySelectorAll('#adminTiersContainer .admin-tier-row')]
+        .map(row => ({
+            minQty: parseInt(row.querySelector('.tier-qty').value) || 0,
+            price: parseFloat(row.querySelector('.tier-price').value) || 0,
+            label: ''
+        }))
+        .filter(t => t.minQty > 0 && t.price > 0)
+        .sort((a, b) => a.minQty - b.minQty);
+}
+
+// ── Option rows ───────────────────────────────────────────────────────────────
+
+function adminRenderOptionRows(options) {
+    const c = document.getElementById('adminOptionsContainer');
+    const empty = document.getElementById('adminOptionsEmpty');
+    c.innerHTML = '';
+    if (options.length === 0) { if (empty) empty.style.display = ''; return; }
+    if (empty) empty.style.display = 'none';
+    options.forEach(o => c.appendChild(adminMakeOptionRow(o.optionName, o.optionValue, o.priceModifier)));
+}
+
+function adminMakeOptionRow(name = '', value = '', modifier = 0) {
+    const row = document.createElement('div');
+    row.className = 'admin-option-row';
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 80px auto;gap:6px;margin-bottom:6px;align-items:center;';
+    row.innerHTML = `
+        <input type="text" class="opt-name" placeholder="Group (e.g. Finish)" value="${escHtml(name)}"
+            style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;width:100%;" />
+        <input type="text" class="opt-value" placeholder="Label (e.g. Double Sided)" value="${escHtml(value)}"
+            style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;width:100%;" />
+        <input type="number" class="opt-mod" step="0.01" placeholder="+$0.00" value="${modifier || ''}"
+            style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;width:100%;" />
+        <button type="button" onclick="adminRemoveOptionRow(this)"
+            style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:16px;padding:4px;line-height:1;">✕</button>`;
+    return row;
+}
+
+function adminAddOptionRow() {
+    const c = document.getElementById('adminOptionsContainer');
+    const empty = document.getElementById('adminOptionsEmpty');
+    if (empty) empty.style.display = 'none';
+    c.appendChild(adminMakeOptionRow());
+}
+
+function adminRemoveOptionRow(btn) {
+    btn.closest('.admin-option-row').remove();
+    const c = document.getElementById('adminOptionsContainer');
+    if (!c.querySelector('.admin-option-row'))
+        document.getElementById('adminOptionsEmpty').style.display = '';
+}
+
+function adminCollectOptions() {
+    return [...document.querySelectorAll('#adminOptionsContainer .admin-option-row')]
+        .map(row => ({
+            optionName: row.querySelector('.opt-name').value.trim(),
+            optionValue: row.querySelector('.opt-value').value.trim(),
+            priceModifier: parseFloat(row.querySelector('.opt-mod').value) || 0
+        }))
+        .filter(o => o.optionName && o.optionValue);
 }
 
 function adminCancelEdit() {
@@ -1056,27 +1301,28 @@ async function adminSaveProduct(e) {
     e.preventDefault();
     const btn = document.getElementById('adminSaveBtn');
     btn.disabled = true; btn.textContent = 'Saving…';
+    const tiers = adminCollectTiers();
+    const options = adminCollectOptions();
     const payload = {
         name: document.getElementById('adminFName').value.trim(),
         description: document.getElementById('adminFDesc').value.trim(),
         basePrice: parseFloat(document.getElementById('adminFPrice').value),
-        minPrice: 0, maxPrice: 0, isActive: true, options: [], priceTiers: []
+        minPrice: tiers.length ? tiers[0].price : 0,
+        maxPrice: tiers.length ? tiers[tiers.length - 1].price : 0,
+        isActive: true,
+        options,
+        priceTiers: tiers
     };
     try {
         let res;
         const productId = document.getElementById('adminProductId').value;
         if (adminIsEditMode && productId) {
-            // Use the ProductsController PUT endpoint
             res = await fetch(`${API_BASE}/api/Products/${productId}`, {
-                method: 'PUT',
-                headers: adminHeaders(),
-                body: JSON.stringify({ ...payload, options: [], priceTiers: [] })
+                method: 'PUT', headers: adminHeaders(), body: JSON.stringify(payload)
             });
         } else {
             res = await fetch(`${API_BASE}/api/Products`, {
-                method: 'POST',
-                headers: adminHeaders(),
-                body: JSON.stringify(payload)
+                method: 'POST', headers: adminHeaders(), body: JSON.stringify(payload)
             });
         }
         if (res.ok || res.status === 204) {
@@ -1203,11 +1449,25 @@ async function adminSelectOrder(id) {
 
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Items</div>
-                ${(order.items || []).map(i => `
-                    <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);">
-                        <span>${i.quantity}× ${i.productName}${i.options?.length ? ' <span style="color:var(--muted);">(' + i.options.map(o => o.optionValue).join(', ') + ')</span>' : ''}</span>
-                        <span style="font-weight:600;">$${(i.unitPrice * i.quantity).toFixed(2)}</span>
-                    </div>`).join('')}
+                ${(order.items || []).map(i => {
+        const linePrice = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
+        const qtyLabel = i.isTiered ? `qty ${i.quantity}` : `${i.quantity}×`;
+        const optionNames = i.options?.map(o => o.optionValue).join(', ');
+        const optionLines = (i.options || []).filter(o => o.priceModifier !== 0).map(o =>
+            `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0 2px 12px;color:var(--muted);">
+                            <span>+ ${escHtml(o.optionValue)}</span>
+                            <span>+$${o.priceModifier.toFixed(2)}</span>
+                        </div>`
+        ).join('');
+        return `
+                    <div style="padding:4px 0;border-bottom:1px solid var(--border);">
+                        <div style="display:flex;justify-content:space-between;font-size:13px;">
+                            <span><strong>${qtyLabel}</strong> ${escHtml(i.productName)}</span>
+                            <span style="font-weight:600;">$${linePrice.toFixed(2)}</span>
+                        </div>
+                        ${optionLines}
+                    </div>`;
+    }).join('')}
                 <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding-top:8px;">
                     <span>Total</span><span style="color:var(--accent);">$${order.totalPrice.toFixed(2)}</span>
                 </div>

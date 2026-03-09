@@ -329,12 +329,39 @@
                             </div>
                             <div class="admin-field">
                                 <label>Description</label>
-                                <textarea id="adminFDesc" rows="3" placeholder="Short product description"></textarea>
+                                <textarea id="adminFDesc" rows="2" placeholder="Short product description"></textarea>
                             </div>
                             <div class="admin-field">
-                                <label>Base Price ($) *</label>
+                                <label>Base / Starting Price ($) *</label>
                                 <input type="number" id="adminFPrice" step="0.01" min="0" placeholder="0.00" required />
+                                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Shown on product card. If using tiers, set this to the lowest tier price.</div>
                             </div>
+
+                            <!-- Price Tiers -->
+                            <div class="admin-field">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                    <label style="margin:0;">Price Tiers <span style="font-size:11px;font-weight:400;color:var(--muted);">(qty-based pricing)</span></label>
+                                    <button type="button" onclick="adminAddTierRow()" style="font-size:11px;padding:3px 10px;background:var(--accent2);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;">+ Add Tier</button>
+                                </div>
+                                <div id="adminTiersContainer">
+                                    <div style="font-size:12px;color:var(--muted);font-style:italic;" id="adminTiersEmpty">No tiers — flat base price applies.</div>
+                                </div>
+                                <div id="adminTierHeader" style="display:none;font-size:11px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:4px;padding:0 2px;">
+                                    <span>Min Qty</span><span>Price ($)</span><span></span>
+                                </div>
+                            </div>
+
+                            <!-- Add-On Options -->
+                            <div class="admin-field">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                    <label style="margin:0;">Add-On Options <span style="font-size:11px;font-weight:400;color:var(--muted);">(checkboxes on product page)</span></label>
+                                    <button type="button" onclick="adminAddOptionRow()" style="font-size:11px;padding:3px 10px;background:var(--accent2);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;">+ Add Option</button>
+                                </div>
+                                <div id="adminOptionsContainer">
+                                    <div style="font-size:12px;color:var(--muted);font-style:italic;" id="adminOptionsEmpty">No add-on options.</div>
+                                </div>
+                            </div>
+
                             <div style="display:flex;gap:10px;margin-top:8px;">
                                 <button type="button" class="admin-cancel-btn" onclick="adminCancelEdit()">Cancel</button>
                                 <button type="submit" class="admin-save-btn" id="adminSaveBtn">Save Product</button>
@@ -387,19 +414,25 @@
                     <div class="pd-name" id="pdName">Product Name</div>
                     <div class="pd-price-tag" id="pdPrice">$0.00 per unit</div>
                 </div>
-                <button class="close-btn" style="color:rgba(255,255,255,0.8);flex-shrink:0;margin-top:2px;" onclick="closeProductDetail()">&times;</button>
+                <button class="close-btn" style="color:rgba(255,255,255,0.8);flex-shrink:0;margin-top:2px;" onclick="closeProductDetail();event.stopPropagation();">&times;</button>
             </div>
             <div class="pd-body">
                 <div class="pd-desc" id="pdDesc"></div>
-                <div class="pd-section-label">Quantity</div>
-                <div class="pd-qty-row">
-                    <div class="qty-stepper">
-                        <button onclick="pdChangeQty(-1)" aria-label="Decrease">−</button>
-                        <div class="qty-stepper-val" id="pdQtyDisplay">1</div>
-                        <button onclick="pdChangeQty(1)" aria-label="Increase">+</button>
-                    </div>
-                    <div class="pd-est-total">Est. total: <strong id="pdEstTotal">$0.00</strong></div>
+
+                <!-- Price table or flat price — rendered by JS -->
+                <div id="pdPriceSection" style="margin-bottom:16px;"></div>
+
+                <!-- Qty: dropdown (tiers) or stepper (flat) — rendered by JS -->
+                <div id="pdQtySection" style="margin-bottom:16px;">
+                    <!-- populated by openProductDetail -->
                 </div>
+
+                <!-- Est. total always visible -->
+                <div class="pd-est-total" style="margin-bottom:16px;">Est. total: <strong id="pdEstTotal">$0.00</strong></div>
+
+                <!-- Add-on options — shown only when product has options -->
+                <div id="pdOptionsSection" style="display:none;margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:10px;"></div>
+
                 <div class="pd-section-label" style="margin-bottom:10px;">How would you like to proceed?</div>
                 <div class="pd-mode-grid">
                     <button class="pd-mode-card active" id="pdModeQuote" onclick="pdSetMode('quote')">

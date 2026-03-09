@@ -17,8 +17,17 @@ public interface IEmailService
 public class EmailLineItem
 {
     public string ProductName { get; set; } = string.Empty;
+    public string? DisplayName { get; set; } // overrides ProductName in email if set
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public bool IsTiered { get; set; } // if true, UnitPrice is the flat batch total — don't multiply by Quantity
+    public List<EmailLineItemOption> Options { get; set; } = new();
+}
+
+public class EmailLineItemOption
+{
+    public string OptionValue { get; set; } = string.Empty;
+    public decimal PriceModifier { get; set; }
 }
 
 public class SmtpEmailService : IEmailService
@@ -130,14 +139,13 @@ public class SmtpEmailService : IEmailService
     {
         var subject = "Confirm your email – D & J's Elevated Designs";
         var body = BuildSimple(
-            heading: "Almost there — confirm your email! ✉️",
+            heading: "Confirm your email address ✉️",
             paragraphs: new[]
             {
-                $"Hi {WebUtility.HtmlEncode(name)}, thanks for creating an account with D &amp; J's Elevated Designs!",
-                "Click the button below to verify your email address and activate your account. This link expires after use.",
-                "If you didn't create this account, you can safely ignore this email."
+                $"Hi {WebUtility.HtmlEncode(name)}, thanks for creating an account! Click the button below to verify your email address and activate your account.",
+                "This link will expire after 24 hours. If you didn't create an account, you can safely ignore this email."
             },
-            ctaText: "Confirm My Email",
+            ctaText: "Confirm Email",
             ctaUrl: confirmUrl
         );
         return SendAsync(toEmail, subject, body);
@@ -150,12 +158,30 @@ public class SmtpEmailService : IEmailService
         var rows = new StringBuilder();
         foreach (var item in items)
         {
+            var label = WebUtility.HtmlEncode(item.DisplayName ?? item.ProductName);
+            var addonTotal = item.Options.Sum(o => o.PriceModifier);
+            var baseTotal = item.IsTiered ? item.UnitPrice : item.UnitPrice * item.Quantity;
+            var lineTotal = baseTotal + addonTotal;
+            var qtyLabel = item.IsTiered
+                ? item.Quantity.ToString()
+                : item.Quantity == 1 ? "—" : item.Quantity.ToString();
+            var optionLines = new StringBuilder();
+            foreach (var opt in item.Options.Where(o => o.PriceModifier != 0))
+            {
+                optionLines.Append($@"
+                <tr>
+                    <td colspan=""2"" style=""padding:2px 0 4px 12px;font-size:12px;color:#6b7280;"">+ {WebUtility.HtmlEncode(opt.OptionValue)}</td>
+                    <td style=""padding:2px 0 4px 0;font-size:12px;color:#7c3aed;text-align:right;"">+${opt.PriceModifier:F2}</td>
+                </tr>");
+            }
             rows.Append($@"
                 <tr>
-                    <td style=""padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;"">{WebUtility.HtmlEncode(item.ProductName)}</td>
-                    <td style=""padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;text-align:center;"">{item.Quantity}</td>
-                    <td style=""padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;text-align:right;"">${(item.UnitPrice * item.Quantity):F2}</td>
-                </tr>");
+                    <td style=""padding:8px 0 {(item.Options.Any(o => o.PriceModifier != 0) ? "2px" : "8px")} 0;border-bottom:{(item.Options.Any(o => o.PriceModifier != 0) ? "none" : "1px solid #e5e7eb")};font-size:14px;color:#374151;"">{label}</td>
+                    <td style=""padding:8px 0;font-size:14px;color:#374151;text-align:center;"">{qtyLabel}</td>
+                    <td style=""padding:8px 0;font-size:14px;font-weight:600;color:#374151;text-align:right;"">${lineTotal:F2}</td>
+                </tr>
+                {optionLines}
+                {(item.Options.Any(o => o.PriceModifier != 0) ? @"<tr><td colspan=""3"" style=""border-bottom:1px solid #e5e7eb;padding:0;""></td></tr>" : "")}");
         }
 
         return Wrap($@"

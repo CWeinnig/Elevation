@@ -13,13 +13,22 @@ public class OrdersController : ControllerBase
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _env;
     private readonly IEmailService _email;
+    private readonly IConfiguration _config;
 
-    public OrdersController(AppDbContext context, IWebHostEnvironment env, IEmailService email)
+    public OrdersController(AppDbContext context, IWebHostEnvironment env, IEmailService email, IConfiguration config)
     {
         _context = context;
         _env = env;
         _email = email;
+        _config = config;
     }
+
+    // Helper: resolves the correct frontend base URL for links sent in emails.
+    // In development, set "FrontendBaseUrl": "http://localhost:5500" (or wherever
+    // your frontend dev server runs) in appsettings.Development.json.
+    // In production, leave it unset and it falls back to the request host.
+    private string FrontendBase =>
+        _config["SiteBaseUrl"]?.TrimEnd('/') ?? $"{Request.Scheme}://{Request.Host}";
 
     // ── Create order or quote request ────────────────────────────────────────
 
@@ -65,10 +74,25 @@ public class OrdersController : ControllerBase
 
         foreach (var itemDto in dto.Items)
         {
-            var dbProduct = await _context.Products.FindAsync(itemDto.ProductId);
+            var dbProduct = await _context.Products
+                .Include(p => p.PriceTiers)
+                .FirstOrDefaultAsync(p => p.Id == itemDto.ProductId);
             if (dbProduct == null) return BadRequest($"Product ID {itemDto.ProductId} not found.");
 
-            decimal itemCost = dbProduct.BasePrice;
+            // Resolve tier price: find the highest tier whose MinQty <= ordered qty
+            decimal baseCost = dbProduct.BasePrice;
+            bool isTiered = dbProduct.PriceTiers != null && dbProduct.PriceTiers.Any();
+            if (isTiered)
+            {
+                var matchedTier = dbProduct.PriceTiers!
+                    .Where(t => t.MinQty <= itemDto.Quantity)
+                    .OrderByDescending(t => t.MinQty)
+                    .FirstOrDefault();
+                if (matchedTier != null)
+                    baseCost = matchedTier.Price;
+            }
+
+            decimal addonCost = 0;
             var orderOptions = new List<OrderOption>();
 
             foreach (var optDto in itemDto.Options)
@@ -79,7 +103,7 @@ public class OrdersController : ControllerBase
                 if (dbOption.ProductId != itemDto.ProductId)
                     return BadRequest($"ProductOption {optDto.ProductOptionId} does not belong to Product {itemDto.ProductId}.");
 
-                itemCost += dbOption.PriceModifier;
+                addonCost += dbOption.PriceModifier;
                 orderOptions.Add(new OrderOption
                 {
                     OptionName = dbOption.OptionName,
@@ -88,12 +112,13 @@ public class OrdersController : ControllerBase
                 });
             }
 
-            totalPrice += itemCost * itemDto.Quantity;
+            // For tiered products, baseCost IS the batch total — don't multiply by qty
+            totalPrice += isTiered ? (baseCost + addonCost) : (baseCost + addonCost) * itemDto.Quantity;
             orderItems.Add(new OrderItem
             {
                 ProductId = itemDto.ProductId,
                 Quantity = itemDto.Quantity,
-                UnitPrice = itemCost,
+                UnitPrice = baseCost,  // base only — add-ons tracked separately in Options
                 Options = orderOptions
             });
         }
@@ -109,7 +134,6 @@ public class OrdersController : ControllerBase
             Status = initialStatus,
             TotalPrice = totalPrice,
             DesignNotes = dto.DesignNotes,
-            CustomerPhone = dto.CustomerPhone ?? string.Empty,
             IsQuoteRequest = dto.IsQuoteRequest,
             PaymentToken = dto.IsQuoteRequest ? Guid.NewGuid().ToString("N") : string.Empty,
             CreatedAt = DateTime.UtcNow,
@@ -136,12 +160,25 @@ public class OrdersController : ControllerBase
         await _context.SaveChangesAsync();
 
         // 5. Send confirmation email
-        var emailItems = orderItems.Select(i => new EmailLineItem
+        var emailItems = new List<EmailLineItem>();
+        foreach (var i in orderItems)
         {
-            ProductName = _context.Products.Find(i.ProductId)?.Name ?? "Product",
-            Quantity = i.Quantity,
-            UnitPrice = i.UnitPrice
-        }).ToList();
+            var prod = _context.Products.Include(p => p.PriceTiers).FirstOrDefault(p => p.Id == i.ProductId);
+            bool tiered = prod?.PriceTiers != null && prod.PriceTiers.Any();
+            // Main product line
+            emailItems.Add(new EmailLineItem
+            {
+                DisplayName = prod?.Name ?? "Product",
+                ProductName = prod?.Name ?? "Product",
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice,
+                IsTiered = tiered,
+                Options = (i.Options ?? new List<OrderOption>())
+                    .Where(o => o.PriceModifier != 0)
+                    .Select(o => new EmailLineItemOption { OptionValue = o.OptionValue, PriceModifier = o.PriceModifier })
+                    .ToList()
+            });
+        }
 
         if (dto.IsQuoteRequest)
             await _email.SendQuoteReceivedAsync(recipientEmail, order.Id, totalPrice, emailItems, dto.DesignNotes ?? "");
@@ -169,7 +206,7 @@ public class OrdersController : ControllerBase
     {
         var orders = await _context.Orders
             .Include(o => o.User)
-            .Include(o => o.Items).ThenInclude(i => i.Product)
+            .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.PriceTiers)
             .Include(o => o.Items).ThenInclude(i => i.Options)
             .Include(o => o.UploadedFiles)
             .Where(o => o.UserId == (int?)userId)
@@ -186,7 +223,7 @@ public class OrdersController : ControllerBase
     {
         var orders = await _context.Orders
             .Include(o => o.User)
-            .Include(o => o.Items).ThenInclude(i => i.Product)
+            .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.PriceTiers)
             .Include(o => o.Items).ThenInclude(i => i.Options)
             .Include(o => o.UploadedFiles)
             .OrderByDescending(o => o.CreatedAt)
@@ -341,7 +378,7 @@ public class OrdersController : ControllerBase
 
         order.Status = "AwaitingPayment";
 
-        var paymentUrl = $"{Request.Scheme}://{Request.Host}/?payOrder={order.Id}&token={order.PaymentToken}";
+        var paymentUrl = $"{FrontendBase}/?payOrder={order.Id}&token={order.PaymentToken}";
 
         var recipient = await ResolveRecipient(order);
         if (!string.IsNullOrEmpty(recipient))
@@ -383,7 +420,7 @@ public class OrdersController : ControllerBase
 
         order.Status = "AwaitingPayment";
 
-        var paymentUrl = $"{Request.Scheme}://{Request.Host}/?payOrder={order.Id}&token={order.PaymentToken}";
+        var paymentUrl = $"{FrontendBase}/?payOrder={order.Id}&token={order.PaymentToken}";
 
         var recipient = await ResolveRecipient(order);
         if (!string.IsNullOrEmpty(recipient))
@@ -430,7 +467,9 @@ public class OrdersController : ControllerBase
             {
                 productName = i.Product?.Name ?? string.Empty,
                 quantity = i.Quantity,
-                unitPrice = i.UnitPrice
+                unitPrice = i.UnitPrice,
+                isTiered = i.Product?.PriceTiers != null && i.Product.PriceTiers.Any(),
+                options = i.Options?.Where(o => o.PriceModifier != 0).Select(o => new { o.OptionValue, o.PriceModifier })
             })
         });
     }
@@ -474,7 +513,12 @@ public class OrdersController : ControllerBase
                 {
                     ProductName = i.Product?.Name ?? "Product",
                     Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice
+                    UnitPrice = i.UnitPrice,
+                    IsTiered = i.Product?.PriceTiers != null && i.Product.PriceTiers.Any(),
+                    Options = (i.Options ?? new List<OrderOption>())
+                        .Where(o => o.PriceModifier != 0)
+                        .Select(o => new EmailLineItemOption { OptionValue = o.OptionValue, PriceModifier = o.PriceModifier })
+                        .ToList()
                 }).ToList() ?? new();
 
             await _email.SendOrderConfirmedAsync(recipient, order.Id, order.TotalPrice, items);
@@ -488,7 +532,7 @@ public class OrdersController : ControllerBase
     private async Task<Order?> GetOrderWithIncludes(int id) =>
         await _context.Orders
             .Include(o => o.User)
-            .Include(o => o.Items).ThenInclude(i => i.Product)
+            .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.PriceTiers)
             .Include(o => o.Items).ThenInclude(i => i.Options)
             .Include(o => o.UploadedFiles)
             .Include(o => o.Notifications)
@@ -513,11 +557,10 @@ public class OrdersController : ControllerBase
         TotalPrice = order.TotalPrice,
         CreatedAt = order.CreatedAt,
         DesignNotes = order.DesignNotes,
-        CustomerPhone = order.CustomerPhone,
         IsQuoteRequest = order.IsQuoteRequest,
-        // Resolve name and email from the linked User or fall back to guest email
         CustomerName = order.User?.Name ?? string.Empty,
         CustomerEmail = order.User?.Email ?? order.GuestEmail,
+        CustomerPhone = order.CustomerPhone ?? string.Empty,
         Items = order.Items?.Select(i => new OrderItemDto
         {
             Id = i.Id,
@@ -525,6 +568,7 @@ public class OrdersController : ControllerBase
             ProductName = i.Product?.Name ?? string.Empty,
             Quantity = i.Quantity,
             UnitPrice = i.UnitPrice,
+            IsTiered = i.Product?.PriceTiers != null && i.Product.PriceTiers.Any(),
             Options = i.Options?.Select(o => new OrderOptionDto
             {
                 OptionName = o.OptionName,

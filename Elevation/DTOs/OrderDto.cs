@@ -37,9 +37,11 @@ public class OrderDto
     public DateTime CreatedAt { get; set; }
     public string DesignNotes { get; set; } = string.Empty;
     public bool IsQuoteRequest { get; set; }
+    // Resolved contact info — populated server-side so admin always sees name + email
     public string CustomerName { get; set; } = string.Empty;
     public string CustomerEmail { get; set; } = string.Empty;
     public string CustomerPhone { get; set; } = string.Empty;
+    // PaymentToken intentionally excluded from standard responses
     public List<OrderItemDto> Items { get; set; } = new();
     public List<UploadedFileDto> UploadedFiles { get; set; } = new();
 }
@@ -51,6 +53,7 @@ public class OrderItemDto
     public string ProductName { get; set; } = string.Empty;
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public bool IsTiered { get; set; }
     public List<OrderOptionDto> Options { get; set; } = new();
 }
 
