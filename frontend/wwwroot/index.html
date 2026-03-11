@@ -155,6 +155,42 @@
     <!-- ═══════════════════════════════════════════════════════
          PROOF PAYMENT MODAL (returned via payment link)
     ════════════════════════════════════════════════════════ -->
+    <!-- ═══════════════════════════════════════════════════════
+         PROOF REVIEW MODAL
+    ════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="proofReviewModal">
+        <div class="modal" id="proofReviewBox" style="max-width:520px;">
+            <div class="modal-header">
+                <div>
+                    <h2>Review Your Proof</h2>
+                    <p class="signin-subtitle" id="proofReviewSubtitle">Quote #—</p>
+                </div>
+                <button class="close-btn" onclick="closeProofReviewModal()">&times;</button>
+            </div>
+
+            <!-- Proof file links -->
+            <div id="proofReviewFiles" style="margin-bottom:1.25rem;"></div>
+
+            <!-- Comments box -->
+            <p class="section-label">Comments / Feedback</p>
+            <textarea id="proofReviewComments" rows="4" placeholder="Optional — describe any changes needed or reason for cancellation..." style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.9rem;resize:vertical;margin-bottom:1.25rem;"></textarea>
+
+            <!-- Actions -->
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <button class="btn-primary" onclick="submitProofFeedback('approve')" style="background:linear-gradient(135deg,#10b981,#059669);">
+                    ✓ Approve Proof — Proceed to Payment
+                </button>
+                <button class="btn-primary" onclick="submitProofFeedback('revision')" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);">
+                    ✏️ Request Changes
+                </button>
+                <button class="btn-ghost" onclick="submitProofFeedback('cancel')" style="color:#ef4444;border-color:#ef4444;border:1.5px solid #ef4444;padding:11px;border-radius:8px;background:transparent;font-family:'DM Sans',sans-serif;font-size:0.95rem;font-weight:600;cursor:pointer;">
+                    ✗ Cancel This Order
+                </button>
+            </div>
+            <p style="margin-top:1rem;font-size:0.78rem;color:var(--muted);text-align:center;">Approving confirms you are happy with the proof. Requesting changes will notify our team. Cancelling will flag the order for admin review — no charge will be made.</p>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="proofPayModal" onclick="if(event.target===this)closeProofPayModal()">
         <div class="modal" id="proofPayBox">
             <div class="modal-header">

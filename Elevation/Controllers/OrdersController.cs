@@ -23,12 +23,11 @@ public class OrdersController : ControllerBase
         _config = config;
     }
 
-    // Helper: resolves the correct frontend base URL for links sent in emails.
-    // In development, set "FrontendBaseUrl": "http://localhost:5500" (or wherever
-    // your frontend dev server runs) in appsettings.Development.json.
-    // In production, leave it unset and it falls back to the request host.
     private string FrontendBase =>
         _config["SiteBaseUrl"]?.TrimEnd('/') ?? $"{Request.Scheme}://{Request.Host}";
+
+    private string AdminEmail =>
+        _config["Email:SmtpUser"] ?? string.Empty;
 
     // ── Create order or quote request ────────────────────────────────────────
 
@@ -285,8 +284,8 @@ public class OrdersController : ControllerBase
                 var proofUrl = proofFile != null
                     ? $"{Request.Scheme}://{Request.Host}/api/Files/{proofFile.Id}/download"
                     : $"{Request.Scheme}://{Request.Host}";
-
-                await _email.SendProofReadyAsync(recipient, order.Id, proofUrl);
+                var approveUrl = $"{FrontendBase}/api/Orders/{order.Id}/approve-proof-email?token={order.PaymentToken}";
+                await _email.SendProofReadyAsync(recipient, order.Id, proofUrl, approveUrl);
             }
         }
 
@@ -348,7 +347,8 @@ public class OrdersController : ControllerBase
         {
             var proofUrl = Url.Action("DownloadFile", "Files", new { id = proofFile.Id }, Request.Scheme)
                            ?? $"{Request.Scheme}://{Request.Host}";
-            await _email.SendProofReadyAsync(recipient, order.Id, proofUrl);
+            var approveUrl = $"{FrontendBase}/api/Orders/{order.Id}/approve-proof-email?token={order.PaymentToken}";
+            await _email.SendProofReadyAsync(recipient, order.Id, proofUrl, approveUrl);
         }
 
         return Ok(new
@@ -469,7 +469,8 @@ public class OrdersController : ControllerBase
                 quantity = i.Quantity,
                 unitPrice = i.UnitPrice,
                 isTiered = i.Product?.PriceTiers != null && i.Product.PriceTiers.Any(),
-                options = i.Options?.Where(o => o.PriceModifier != 0).Select(o => new { o.OptionValue, o.PriceModifier })
+                options = i.Options?.Where(o => o.PriceModifier != 0)
+                    .Select(o => new { o.OptionValue, o.PriceModifier })
             })
         });
     }
@@ -527,6 +528,96 @@ public class OrdersController : ControllerBase
         return Ok(new { message = "Payment recorded", currentStatus = order.Status });
     }
 
+    // ── Proof feedback (approve / revision / cancel) ─────────────────────────
+
+    [HttpPost("{id}/proof-feedback")]
+    public async Task<IActionResult> ProofFeedback(int id, [FromBody] ProofFeedbackDto dto)
+    {
+        var order = await _context.Orders.FindAsync(id);
+        if (order == null) return NotFound();
+
+        if (!order.IsQuoteRequest)
+            return BadRequest("This order is not a quote request.");
+
+        if (order.Status != "ProofSent")
+            return BadRequest($"Cannot review proof — current status is '{order.Status}'.");
+
+        // Validate identity — either token (email link) or userId (logged-in)
+        bool authenticated = false;
+        if (!string.IsNullOrEmpty(dto.Token))
+            authenticated = order.PaymentToken == dto.Token;
+        else if (dto.UserId.HasValue)
+            authenticated = order.UserId.HasValue && order.UserId.Value == dto.UserId.Value;
+
+        if (!authenticated)
+            return Unauthorized("Invalid token or user.");
+
+        order.ProofComments = dto.Comments ?? string.Empty;
+        var recipient = await ResolveRecipient(order);
+
+        switch (dto.Action.ToLower())
+        {
+            case "approve":
+                order.Status = "AwaitingPayment";
+                var paymentUrl = $"{FrontendBase}/?payOrder={order.Id}&token={order.PaymentToken}";
+                if (!string.IsNullOrEmpty(recipient))
+                {
+                    _context.Notifications.Add(new Notification { OrderId = order.Id, Type = "Proof Approved", Recipient = recipient, SentAt = DateTime.UtcNow });
+                    await _context.SaveChangesAsync();
+                    await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl);
+                }
+                else await _context.SaveChangesAsync();
+                return Ok(new { message = "Proof approved", paymentUrl = $"/?payOrder={order.Id}&token={order.PaymentToken}" });
+
+            case "revision":
+                order.Status = "RevisionRequested";
+                if (!string.IsNullOrEmpty(recipient))
+                    _context.Notifications.Add(new Notification { OrderId = order.Id, Type = "Revision Requested", Recipient = recipient, SentAt = DateTime.UtcNow });
+                await _context.SaveChangesAsync();
+                if (!string.IsNullOrEmpty(AdminEmail))
+                    await _email.SendAdminRevisionRequestedAsync(AdminEmail, order.Id, recipient ?? "unknown", dto.Comments ?? string.Empty);
+                return Ok(new { message = "Revision requested" });
+
+            case "cancel":
+                order.Status = "CancellationRequested";
+                if (!string.IsNullOrEmpty(recipient))
+                    _context.Notifications.Add(new Notification { OrderId = order.Id, Type = "Cancellation Requested", Recipient = recipient, SentAt = DateTime.UtcNow });
+                await _context.SaveChangesAsync();
+                if (!string.IsNullOrEmpty(AdminEmail))
+                    await _email.SendAdminCancellationRequestedAsync(AdminEmail, order.Id, recipient ?? "unknown", dto.Comments ?? string.Empty);
+                return Ok(new { message = "Cancellation requested" });
+
+            default:
+                return BadRequest("Invalid action. Use 'approve', 'revision', or 'cancel'.");
+        }
+    }
+
+    // ── Approve proof via email link (no login required) ─────────────────────
+
+    [HttpGet("{id}/approve-proof-email")]
+    public async Task<IActionResult> ApproveProofViaEmail(int id, [FromQuery] string token)
+    {
+        var order = await _context.Orders.FindAsync(id);
+        if (order == null)
+            return Redirect($"{FrontendBase}/?proofResult=invalid");
+
+        if (!order.IsQuoteRequest || order.Status != "ProofSent" || order.PaymentToken != token)
+            return Redirect($"{FrontendBase}/?proofResult=invalid");
+
+        order.Status = "AwaitingPayment";
+        var paymentUrl = $"{FrontendBase}/?payOrder={order.Id}&token={order.PaymentToken}";
+        var recipient = await ResolveRecipient(order);
+        if (!string.IsNullOrEmpty(recipient))
+        {
+            _context.Notifications.Add(new Notification { OrderId = order.Id, Type = "Proof Approved via Email", Recipient = recipient, SentAt = DateTime.UtcNow });
+            await _context.SaveChangesAsync();
+            await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl);
+        }
+        else await _context.SaveChangesAsync();
+
+        return Redirect(paymentUrl);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<Order?> GetOrderWithIncludes(int id) =>
@@ -557,6 +648,7 @@ public class OrdersController : ControllerBase
         TotalPrice = order.TotalPrice,
         CreatedAt = order.CreatedAt,
         DesignNotes = order.DesignNotes,
+        ProofComments = order.ProofComments,
         IsQuoteRequest = order.IsQuoteRequest,
         CustomerName = order.User?.Name ?? string.Empty,
         CustomerEmail = order.User?.Email ?? order.GuestEmail,
@@ -588,5 +680,12 @@ public class OrdersController : ControllerBase
 }
 
 public class ApproveProofDto { public string PaymentToken { get; set; } = string.Empty; }
+public class ProofFeedbackDto
+{
+    public string Action { get; set; } = string.Empty; // "approve" | "revision" | "cancel"
+    public string? Comments { get; set; }
+    public string? Token { get; set; }   // for email-link flow (no login)
+    public int? UserId { get; set; }      // for logged-in flow
+}
 public class CustomerApproveDto { public int UserId { get; set; } }
 public class CompletePaymentDto { public string PaymentToken { get; set; } = string.Empty; public string SquarePaymentId { get; set; } = string.Empty; }

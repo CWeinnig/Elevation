@@ -8,7 +8,9 @@ public interface IEmailService
 {
     Task SendOrderConfirmedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem> items);
     Task SendQuoteReceivedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem> items, string designNotes);
-    Task SendProofReadyAsync(string toEmail, int orderId, string proofDownloadUrl);
+    Task SendProofReadyAsync(string toEmail, int orderId, string proofDownloadUrl, string approveUrl);
+    Task SendAdminRevisionRequestedAsync(string adminEmail, int orderId, string customerEmail, string comments);
+    Task SendAdminCancellationRequestedAsync(string adminEmail, int orderId, string customerEmail, string comments);
     Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total);
     Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl);
     Task SendEmailConfirmationAsync(string toEmail, string name, string confirmUrl);
@@ -17,10 +19,10 @@ public interface IEmailService
 public class EmailLineItem
 {
     public string ProductName { get; set; } = string.Empty;
-    public string? DisplayName { get; set; } // overrides ProductName in email if set
+    public string? DisplayName { get; set; }
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
-    public bool IsTiered { get; set; } // if true, UnitPrice is the flat batch total — don't multiply by Quantity
+    public bool IsTiered { get; set; }
     public List<EmailLineItemOption> Options { get; set; } = new();
 }
 
@@ -87,20 +89,47 @@ public class SmtpEmailService : IEmailService
         return SendAsync(toEmail, subject, body);
     }
 
-    public Task SendProofReadyAsync(string toEmail, int orderId, string proofDownloadUrl)
+    public Task SendProofReadyAsync(string toEmail, int orderId, string proofDownloadUrl, string approveUrl)
     {
-        var subject = $"Your proof for your quote is ready – D & J's Elevated Designs";
+        var subject = "Your proof is ready for review – D & J's Elevated Designs";
+        var body = BuildProofReady(orderId, proofDownloadUrl, approveUrl);
+        return SendAsync(toEmail, subject, body);
+    }
+
+    public Task SendAdminRevisionRequestedAsync(string adminEmail, int orderId, string customerEmail, string comments)
+    {
+        var subject = $"Revision Requested – Quote #{orderId}";
         var body = BuildSimple(
-            heading: "Your proof is ready for review! 👀",
+            heading: $"A customer has requested changes on Quote #{orderId} ✏️",
             paragraphs: new[]
             {
-                $"We've prepared a proof for your quote. Please review it carefully and let us know if you'd like any changes.",
-                "Once you approve the proof, we'll send you a secure payment link to complete your order."
+                $"Customer: <strong>{WebUtility.HtmlEncode(customerEmail)}</strong>",
+                "Their feedback:<br><blockquote style='margin:8px 0;padding:10px 14px;background:#f3f0ff;border-left:4px solid #7c3aed;border-radius:4px;color:#374151;'>" + WebUtility.HtmlEncode(comments) + "</blockquote>",
+                "Please review their comments, make the necessary changes, and upload a revised proof."
             },
-            ctaText: "Review Your Proof",
-            ctaUrl: proofDownloadUrl
+            ctaText: null,
+            ctaUrl: null
         );
-        return SendAsync(toEmail, subject, body);
+        return SendAsync(adminEmail, subject, body);
+    }
+
+    public Task SendAdminCancellationRequestedAsync(string adminEmail, int orderId, string customerEmail, string comments)
+    {
+        var subject = $"Cancellation Requested – Quote #{orderId}";
+        var body = BuildSimple(
+            heading: $"A customer has requested to cancel Quote #{orderId} ✗",
+            paragraphs: new[]
+            {
+                $"Customer: <strong>{WebUtility.HtmlEncode(customerEmail)}</strong>",
+                string.IsNullOrWhiteSpace(comments)
+                    ? "No reason was provided."
+                    : "Their reason:<br><blockquote style='margin:8px 0;padding:10px 14px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:4px;color:#374151;'>" + WebUtility.HtmlEncode(comments) + "</blockquote>",
+                "No action has been taken automatically. Please review and update the order status as appropriate."
+            },
+            ctaText: null,
+            ctaUrl: null
+        );
+        return SendAsync(adminEmail, subject, body);
     }
 
     public Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total)
@@ -153,6 +182,23 @@ public class SmtpEmailService : IEmailService
 
     // ── Email builders ────────────────────────────────────────────────────────
 
+    private string BuildProofReady(int orderId, string proofUrl, string approveUrl) => Wrap($@"
+        <tr><td style=""padding:0 0 16px 0;""><h2 style=""margin:0;font-size:22px;font-weight:700;color:#111827;"">Your proof is ready for review! 👀</h2></td></tr>
+        <tr><td style=""padding:0 0 16px 0;""><p style=""margin:0;font-size:15px;color:#6b7280;line-height:1.6;"">We've prepared a proof for your order. Please download and review it carefully before approving.</p></td></tr>
+        <tr><td style=""padding:0 0 24px 0;"">
+            <table width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0"">
+                <tr>
+                    <td style=""padding-right:6px;"" width=""50%"">
+                        <a href=""{WebUtility.HtmlEncode(proofUrl)}"" style=""display:block;text-align:center;padding:13px 0;background:#f3f4f6;color:#374151;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;border:1.5px solid #e5e7eb;"">📄 View Proof</a>
+                    </td>
+                    <td style=""padding-left:6px;"" width=""50%"">
+                        <a href=""{WebUtility.HtmlEncode(approveUrl)}"" style=""display:block;text-align:center;padding:13px 0;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;"">✓ Approve Proof</a>
+                    </td>
+                </tr>
+            </table>
+        </td></tr>
+        <tr><td><p style=""margin:0;font-size:13px;color:#9ca3af;line-height:1.5;"">Approving confirms the proof looks correct and authorizes us to proceed to payment. To request changes or cancel, please log into your account or reply to this email.</p></td></tr>");
+
     private string BuildBase(string heading, string intro, int orderId, List<EmailLineItem> items, decimal total, string? extra)
     {
         var rows = new StringBuilder();
@@ -160,28 +206,23 @@ public class SmtpEmailService : IEmailService
         {
             var label = WebUtility.HtmlEncode(item.DisplayName ?? item.ProductName);
             var addonTotal = item.Options.Sum(o => o.PriceModifier);
-            var baseTotal = item.IsTiered ? item.UnitPrice : item.UnitPrice * item.Quantity;
-            var lineTotal = baseTotal + addonTotal;
-            var qtyLabel = item.IsTiered
-                ? item.Quantity.ToString()
-                : item.Quantity == 1 ? "—" : item.Quantity.ToString();
-            var optionLines = new StringBuilder();
-            foreach (var opt in item.Options.Where(o => o.PriceModifier != 0))
-            {
-                optionLines.Append($@"
-                <tr>
-                    <td colspan=""2"" style=""padding:2px 0 4px 12px;font-size:12px;color:#6b7280;"">+ {WebUtility.HtmlEncode(opt.OptionValue)}</td>
-                    <td style=""padding:2px 0 4px 0;font-size:12px;color:#7c3aed;text-align:right;"">+${opt.PriceModifier:F2}</td>
-                </tr>");
-            }
+            var lineTotal = item.IsTiered ? item.UnitPrice : (item.UnitPrice + addonTotal) * item.Quantity;
             rows.Append($@"
                 <tr>
-                    <td style=""padding:8px 0 {(item.Options.Any(o => o.PriceModifier != 0) ? "2px" : "8px")} 0;border-bottom:{(item.Options.Any(o => o.PriceModifier != 0) ? "none" : "1px solid #e5e7eb")};font-size:14px;color:#374151;"">{label}</td>
-                    <td style=""padding:8px 0;font-size:14px;color:#374151;text-align:center;"">{qtyLabel}</td>
-                    <td style=""padding:8px 0;font-size:14px;font-weight:600;color:#374151;text-align:right;"">${lineTotal:F2}</td>
-                </tr>
-                {optionLines}
-                {(item.Options.Any(o => o.PriceModifier != 0) ? @"<tr><td colspan=""3"" style=""border-bottom:1px solid #e5e7eb;padding:0;""></td></tr>" : "")}");
+                    <td style=""padding:8px 0 2px 0;font-size:14px;color:#374151;"">{label}</td>
+                    <td style=""padding:8px 0 2px 0;font-size:14px;color:#374151;text-align:center;"">{(item.Quantity == 1 ? "—" : item.Quantity.ToString())}</td>
+                    <td style=""padding:8px 0 2px 0;font-size:14px;color:#374151;text-align:right;"">${lineTotal:F2}</td>
+                </tr>");
+            foreach (var opt in item.Options.Where(o => o.PriceModifier != 0))
+            {
+                rows.Append($@"
+                <tr>
+                    <td colspan=""2"" style=""padding:1px 0 6px 12px;font-size:12px;color:#9ca3af;"">+ {WebUtility.HtmlEncode(opt.OptionValue)}</td>
+                    <td style=""padding:1px 0 6px 0;font-size:12px;color:#7c3aed;text-align:right;"">+${opt.PriceModifier:F2}</td>
+                </tr>");
+            }
+            // separator row
+            rows.Append(@"<tr><td colspan=""3"" style=""padding:0;border-bottom:1px solid #e5e7eb;""></td></tr>");
         }
 
         return Wrap($@"

@@ -21,6 +21,9 @@ let pendingPayOrderId = null;
 let pendingPayToken = null;
 let pendingPayInfo = null;
 
+// Quotes history state
+let submittedQuotes = [];
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isAdmin() { return currentUser && currentUser.role === 'Admin'; }
@@ -72,6 +75,8 @@ function getStatusColor(status) {
         'Paid': { bg: 'rgba(16,185,129,0.12)', text: '#10b981' },
         'Completed': { bg: 'rgba(16,185,129,0.15)', text: '#059669' },
         'Cancelled': { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
+        'RevisionRequested': { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b' },
+        'CancellationRequested': { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
         'Pending': { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' },
     };
     return map[status] || { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' };
@@ -86,6 +91,8 @@ function formatStatus(status) {
         'Paid': 'Paid',
         'Completed': 'Completed',
         'Cancelled': 'Cancelled',
+        'RevisionRequested': 'Revision Requested',
+        'CancellationRequested': 'Cancellation Requested',
         'Pending': 'Pending',
     };
     return map[status] || status;
@@ -255,9 +262,7 @@ function closeProductDetail() {
     pdOptionModifiers = {};
 }
 
-function closeProductDetailIfOutside(e) {
-    if (e.target === document.getElementById('productDetailModal')) closeProductDetail();
-}
+function closeProductDetailIfOutside(e) { }
 
 function pdSelectTierQty(val) {
     pdCurrentQty = parseInt(val);
@@ -287,11 +292,11 @@ function pdUpdateTotal() {
     const addons = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
     let total;
     if (tiers.length) {
-        // Tier price is the flat total for that qty band — addons are per-order on top
+        // Tier price is the flat batch total — addons are per-order on top
         total = pdGetActiveTierPrice() + addons;
     } else {
-        // Flat per-unit price × qty + addons
-        total = (pdCurrentProduct.basePrice * pdCurrentQty) + addons;
+        // (base + addons) × qty
+        total = (pdCurrentProduct.basePrice + addons) * pdCurrentQty;
     }
     el.textContent = `$${total.toFixed(2)}`;
 }
@@ -439,7 +444,7 @@ function openQuotesHistory() {
     document.body.style.overflow = 'hidden';
 }
 function closeQuotesHistory() { document.getElementById('quotesHistoryOverlay').classList.remove('show'); document.body.style.overflow = ''; }
-function closeQuotesHistoryIfOutside(e) { if (e.target === document.getElementById('quotesHistoryOverlay')) closeQuotesHistory(); }
+function closeQuotesHistoryIfOutside(e) { }
 
 function renderQuotesHistory() {
     const list = document.getElementById('quotesHistoryList');
@@ -457,17 +462,19 @@ function renderQuotesHistory() {
     }
     list.innerHTML = submittedQuotes.map((q, i) => {
         const date = new Date(q.submittedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
-        const statusColor = q.status === 'Pending' ? '#f59e0b' : q.status === 'Reviewed' ? '#7c3aed' : '#10b981';
+        const sc = getStatusColor(q.status);
+        const canApprove = q.status === 'ProofSent';
         return `<div class="qh-card" style="animation-delay:${i * 0.04}s">
             <div class="qh-card-top">
                 <div class="qh-product-name">${escHtml(q.productName)}</div>
-                <span class="qh-status-badge" style="background:${statusColor}22;color:${statusColor};">${escHtml(q.status)}</span>
+                <span class="qh-status-badge" style="background:${sc.bg};color:${sc.text};">${formatStatus(q.status)}</span>
             </div>
             <div class="qh-meta">
                 <span>Qty: <strong>${q.quantity}</strong></span>
-                <span style="color:var(--accent);font-weight:700;">Est. $${q.estimatedPrice.toFixed(2)}</span>
+                <span style="color:var(--accent);font-weight:700;">$${Number(q.estimatedPrice).toFixed(2)}</span>
             </div>
             ${q.notes ? `<div class="qh-notes">"${escHtml(q.notes)}"</div>` : ''}
+            ${canApprove ? `<button onclick="openProofReviewModal(${q.id}, null)" style="margin-top:8px;width:100%;padding:8px 14px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">👁 Review Proof</button>` : ''}
             <div class="qh-footer">
                 <span class="qh-date">${date}</span>
                 <button class="qh-remove-btn" onclick="removeQuote(${q.id})">Remove</button>
@@ -551,6 +558,7 @@ function pdAddToCart() {
 function addToCart(item) {
     const existing = cart.find(i => i.productId === item.productId);
     if (existing) { existing.qty += item.qty; } else { cart.push({ ...item }); }
+    saveCart();
     updateBadge();
     showToast(`"${item.name}" added to cart!`);
 }
@@ -566,12 +574,16 @@ function renderCart() {
         return;
     }
     list.innerHTML = cart.map((item, i) => {
-        const unitPrice = item.basePrice + item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
+        const addonTotal = item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
+        const unitPrice = item.basePrice + addonTotal;
+        const optionLines = item.selectedOptions.filter(o => o.priceModifier).map(o =>
+            `<div style="font-size:0.8rem;color:var(--muted);margin-left:4px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)}</span></div>`
+        ).join('');
         return `
             <div class="quote-item">
                 <div class="quote-item-name">${item.name}</div>
-                <div class="quote-item-price-unit">$${unitPrice.toFixed(2)} per unit</div>
-                ${item.selectedOptions.length > 0 ? `<div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px;">${item.selectedOptions.map(o => `${o.optionName}: ${o.optionValue}`).join(' · ')}</div>` : ''}
+                <div class="quote-item-price-unit">$${item.basePrice.toFixed(2)} base${addonTotal > 0 ? ` + $${addonTotal.toFixed(2)} add-ons` : ''}</div>
+                ${optionLines}
                 <div class="item-image-area">
                     ${item.imageData
                 ? `<div class="attached-image-preview"><img src="${item.imageData}" alt="Attached design"/><div class="attached-image-info"><span class="attached-image-name">${item.imageName || 'Design file'}</span><button class="remove-img-btn" onclick="removeItemImage(${i})">✕ Remove</button></div></div>`
@@ -592,6 +604,15 @@ function renderCart() {
     summary.style.display = 'block';
 }
 
+function cartStorageKey() { return currentUser ? `cart_${currentUser.id}` : null; }
+function saveCart() { const k = cartStorageKey(); if (k) try { localStorage.setItem(k, JSON.stringify(cart)); } catch { } }
+function loadCart() {
+    const k = cartStorageKey();
+    if (!k) { cart = []; return; }
+    try { const raw = localStorage.getItem(k); cart = raw ? JSON.parse(raw) : []; } catch { cart = []; }
+}
+function clearCart() { const k = cartStorageKey(); if (k) try { localStorage.removeItem(k); } catch { } cart = []; }
+
 function getCartSubtotal() {
     return cart.reduce((s, item) => {
         const unitPrice = item.basePrice + item.selectedOptions.reduce((os, o) => os + (o.priceModifier || 0), 0);
@@ -607,8 +628,8 @@ function attachItemImage(index, input) {
     reader.readAsDataURL(file);
 }
 function removeItemImage(index) { cart[index].imageData = null; cart[index].imageName = null; cart[index].imageFile = null; renderCart(); }
-function updateQty(index, val) { cart[index].qty = Math.max(1, parseInt(val) || 1); renderCart(); updateBadge(); }
-function removeItem(index) { cart.splice(index, 1); renderCart(); updateBadge(); }
+function updateQty(index, val) { cart[index].qty = Math.max(1, parseInt(val) || 1); renderCart(); updateBadge(); saveCart(); }
+function removeItem(index) { cart.splice(index, 1); renderCart(); updateBadge(); saveCart(); }
 
 function updateBadge() {
     const badge = document.getElementById('quoteBadge');
@@ -619,7 +640,7 @@ function updateBadge() {
 
 function openQuotes() { renderCart(); document.getElementById('quotesOverlay').classList.add('show'); document.body.style.overflow = 'hidden'; }
 function closeQuotes() { document.getElementById('quotesOverlay').classList.remove('show'); document.body.style.overflow = ''; }
-function closeIfOutside(e) { if (e.target === document.getElementById('quotesOverlay')) closeQuotes(); }
+function closeIfOutside(e) { }
 
 // ── Checkout Modal ────────────────────────────────────────────────────────────
 
@@ -644,8 +665,12 @@ function updateCheckoutMode() {
 
 function renderModalOrderDetails() {
     document.getElementById('modalOrderDetails').innerHTML = cart.map(item => {
-        const unitPrice = item.basePrice + item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
-        return `<div class="order-detail-card"><div><div style="font-weight:700;">${item.name}</div><div class="order-detail-qty">Quantity: ${item.qty}</div>${item.imageName ? `<div class="order-detail-file">📎 ${item.imageName}</div>` : ''}</div><div style="font-weight:700;">$${(unitPrice * item.qty).toFixed(2)}</div></div>`;
+        const addonTotal = item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
+        const unitPrice = item.basePrice + addonTotal;
+        const optLines = item.selectedOptions.filter(o => o.priceModifier).map(o =>
+            `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)}</span></div>`
+        ).join('');
+        return `<div class="order-detail-card"><div><div style="font-weight:700;">${item.name}</div>${optLines}<div class="order-detail-qty">Qty: ${item.qty} × $${unitPrice.toFixed(2)}</div>${item.imageName ? `<div class="order-detail-file">📎 ${item.imageName}</div>` : ''}</div><div style="font-weight:700;">$${(unitPrice * item.qty).toFixed(2)}</div></div>`;
     }).join('');
     const subtotal = getCartSubtotal();
     const totalItems = cart.reduce((s, i) => s + i.qty, 0);
@@ -659,7 +684,7 @@ function closeRequestModal() {
     document.body.style.overflow = '';
     if (squareCard) { squareCard.destroy(); squareCard = null; }
 }
-function closeModalIfOutside(e) { if (e.target === document.getElementById('requestModal')) closeRequestModal(); }
+function closeModalIfOutside(e) { }
 
 async function initSquare() {
     try {
@@ -734,12 +759,13 @@ async function submitQuote() {
 
         if (!orderRes.ok) { showToast(`Order failed: ${await orderRes.text()}`); return; }
         const order = await orderRes.json();
-        closeRequestModal(); cart = []; updateBadge();
+        closeRequestModal(); clearCart(); updateBadge();
 
         if (isQuote) {
             showToast(`Quote submitted! We'll be in touch with a proof soon. ✓`);
         } else {
             showToast(`Order placed successfully! You'll receive a confirmation email. ✓`);
+            if (currentUser) openAccount();
         }
     } catch (err) {
         showToast('Something went wrong. Please try again.');
@@ -754,10 +780,22 @@ async function submitQuote() {
 async function checkPaymentReturn() {
     const params = new URLSearchParams(window.location.search);
 
+    if (params.get('proofResult') === 'invalid') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showToast('This proof link is invalid or has already been used. Check your account for the latest status.');
+        return;
+    }
+
     if (params.get('order') && params.get('paid') === 'true') {
-        cart = []; updateBadge();
+        clearCart(); updateBadge();
         showToast(`Order placed successfully! You'll receive a confirmation email. ✓`);
         window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+    }
+
+    if (params.get('proofResult') === 'invalid') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showToast('This proof approval link is invalid or has already been used. Please check your account for the latest status.');
         return;
     }
 
@@ -784,14 +822,10 @@ function openProofPaymentModal(info) {
     document.getElementById('proofPayTotal').textContent = `$${Number(info.totalPrice).toFixed(2)}`;
     const itemsEl = document.getElementById('proofPayItems');
     itemsEl.innerHTML = (info.items || []).map(i => {
-        const baseTotal = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
-        const addonTotal = (i.options || []).reduce((s, o) => s + Number(o.priceModifier), 0);
-        const lineTotal = baseTotal + addonTotal;
-        const qtyLabel = i.isTiered ? `Qty: ${i.quantity} (flat rate)` : `${i.quantity} × $${Number(i.unitPrice).toFixed(2)}`;
-        const optionLines = (i.options || []).map(o =>
+        const optionLines = (i.options || []).filter(o => o.priceModifier !== 0).map(o =>
             `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)}</span></div>`
         ).join('');
-        return `<div class="order-detail-card"><div><div style="font-weight:700;">${i.productName}</div><div class="order-detail-qty">${qtyLabel}</div>${optionLines}</div><div style="font-weight:700;">$${lineTotal.toFixed(2)}</div></div>`;
+        return `<div class="order-detail-card"><div><div style="font-weight:700;">${i.productName}</div><div class="order-detail-qty">Qty: ${i.quantity}</div>${optionLines}</div><div style="font-weight:700;">$${Number(info.totalPrice).toFixed(2)}</div></div>`;
     }).join('');
     document.getElementById('proofPayModal').classList.add('show');
     document.body.style.overflow = 'hidden';
@@ -868,7 +902,7 @@ function closeSignIn() {
     });
 }
 
-function closeSignInIfOutside(e) { if (e.target === document.getElementById('signInModal')) closeSignIn(); }
+function closeSignInIfOutside(e) { }
 
 function switchToCreateAccount() {
     document.getElementById('signInForm').style.display = 'none';
@@ -896,11 +930,22 @@ async function handleSignIn() {
             body: JSON.stringify({ email, password })
         });
         if (res.status === 401) { showToast('Invalid email or password.'); return; }
+        if (res.status === 403) {
+            const body = await res.json().catch(() => ({}));
+            if (body.code === 'EMAIL_NOT_CONFIRMED') {
+                showEmailNotConfirmedBanner(email);
+            } else {
+                showToast('Sign in failed. Please try again.');
+            }
+            return;
+        }
         if (!res.ok) throw new Error();
         currentUser = await res.json();
         try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch { }
         closeSignIn();
         updateNavAfterLogin();
+        loadCart();
+        updateBadge();
         // Sync View Quotes panel from server orders so it survives logout/login
         await syncQuotesFromServer();
         if (isAdmin()) {
@@ -909,6 +954,53 @@ async function handleSignIn() {
             showToast(`Welcome back, ${currentUser.name}!`);
         }
     } catch { showToast('Sign in failed. Please try again.'); }
+}
+
+async function showEmailNotConfirmedBanner(email) {
+    // Replace the sign-in form content with a clear message + resend button
+    const form = document.getElementById('signInForm');
+    form.innerHTML = `
+        <div style="text-align:center;padding:8px 0 16px;">
+            <div style="font-size:2rem;margin-bottom:12px;">✉️</div>
+            <h3 style="margin:0 0 8px;font-size:1.1rem;font-weight:700;color:var(--text);">Confirm your email</h3>
+            <p style="margin:0 0 16px;font-size:0.9rem;color:var(--muted);line-height:1.5;">
+                We sent a confirmation link to <strong>${escHtml(email)}</strong>.<br>
+                Please check your inbox and click the link before signing in.
+            </p>
+            <button onclick="resendConfirmationEmail('${escHtml(email)}')" style="
+                padding:10px 24px;background:linear-gradient(135deg,#7c3aed,#5b21b6);
+                color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;
+                font-size:0.9rem;font-weight:600;cursor:pointer;margin-bottom:12px;width:100%;">
+                Resend Confirmation Email
+            </button>
+            <button onclick="resetSignInForm()" style="
+                padding:8px 24px;background:transparent;color:var(--muted);
+                border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;
+                font-size:0.85rem;cursor:pointer;width:100%;">
+                Back to Sign In
+            </button>
+        </div>`;
+}
+
+async function resendConfirmationEmail(email) {
+    try {
+        await fetch(`${API_BASE}/api/Users/resend-confirmation`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        showToast('Confirmation email resent! Check your inbox.');
+    } catch { showToast('Could not resend. Please try again.'); }
+}
+
+function resetSignInForm() {
+    const form = document.getElementById('signInForm');
+    form.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:12px;">
+            <input id="signInEmail" type="email" placeholder="Email" style="padding:10px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.95rem;" />
+            <input id="signInPassword" type="password" placeholder="Password" style="padding:10px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.95rem;" />
+            <button onclick="handleSignIn()" style="padding:11px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.95rem;font-weight:600;cursor:pointer;">Sign In</button>
+            <p style="margin:0;font-size:0.85rem;color:var(--muted);text-align:center;">Don't have an account? <a href="#" onclick="switchToCreateAccount();return false;" style="color:var(--accent2);">Create one</a></p>
+        </div>`;
 }
 
 async function handleCreateAccount() {
@@ -949,6 +1041,8 @@ function loadSessionFromStorage() {
         if (raw) {
             currentUser = JSON.parse(raw);
             updateNavAfterLogin();
+            loadCart();
+            updateBadge();
             // Refresh quotes from server in the background on page load
             syncQuotesFromServer();
         }
@@ -978,7 +1072,10 @@ async function openAccount() {
 }
 
 function closeAccount() { document.getElementById('accountModal').classList.remove('show'); document.body.style.overflow = ''; }
-function closeAccountIfOutside(e) { if (e.target === document.getElementById('accountModal')) closeAccount(); }
+function closeAccountIfOutside(e) { }
+
+// Lookup map so Review Proof button can find proof files without inline JSON
+const _accountProofFilesMap = {};
 
 function renderAccountOrders(orders) {
     const list = document.getElementById('accountOrdersList');
@@ -987,17 +1084,18 @@ function renderAccountOrders(orders) {
         const isQuote = o.isQuoteRequest;
         const statusColor = getStatusColor(o.status);
         const proofFiles = (o.uploadedFiles || []).filter(f => f.originalFileName?.startsWith('PROOF_'));
+        _accountProofFilesMap[o.id] = proofFiles;
         const proofSection = proofFiles.length > 0 ? `
             <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:rgba(6,182,212,0.08);border-radius:8px;border:1px solid rgba(6,182,212,0.2);">
                 <div style="font-size:0.78rem;font-weight:700;color:var(--accent);margin-bottom:6px;">📄 Proofs Ready for Review</div>
                 ${proofFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName.replace('PROOF_', '')}" style="font-size:0.82rem;color:var(--accent2);display:block;margin-bottom:3px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
-                ${o.status === 'ProofSent' ? `<button onclick="approveProof(${o.id})" style="margin-top:8px;padding:6px 14px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.82rem;font-weight:600;cursor:pointer;">✓ Approve Proof & Get Payment Link</button>` : ''}
+                ${o.status === 'ProofSent' ? `<button onclick="openProofReviewModal(${o.id}, null)" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">👁 Review Proof</button>` : ''}
             </div>` : '';
         return `
         <div class="order-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
                 <div>
-                    <div style="font-weight:700;">${isQuote ? '📋 Quote' : '📦 Order'} #${o.id}</div>
+                    <div style="font-weight:700;">${isQuote ? 'Quote Request' : 'Order'}</div>
                     <div style="font-size:0.85rem;color:var(--muted);">${new Date(o.createdAt).toLocaleString()}</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -1005,32 +1103,94 @@ function renderAccountOrders(orders) {
                     <span style="font-weight:700;color:var(--accent);">$${o.totalPrice.toFixed(2)}</span>
                 </div>
             </div>
-            <div style="margin-top:0.5rem;font-size:0.9rem;">${o.items.map(it => {
-            const baseTotal = it.isTiered ? it.unitPrice : it.unitPrice * it.quantity;
-            const addonTotal = (it.options || []).reduce((s, o) => s + Number(o.priceModifier), 0);
-            const lineTotal = baseTotal + addonTotal;
-            const qtyLabel = it.isTiered ? `${it.quantity}×` : `${it.quantity}×`;
-            const addonText = (it.options || []).filter(o => o.priceModifier !== 0).map(o => `+${o.optionValue}`).join(', ');
-            return `<div style="margin-bottom:4px;">${qtyLabel} ${it.productName}${addonText ? ` <span style="color:var(--muted);font-size:0.8rem;">(${addonText})</span>` : ''} <span style="color:var(--muted);">— $${lineTotal.toFixed(2)}</span></div>`;
-        }).join('')}</div>
+            <div style="margin-top:0.5rem;font-size:0.9rem;">${o.items.map(it => `<div style="margin-bottom:4px;">${it.quantity}x ${it.productName} <span style="color:var(--muted);">— $${(it.unitPrice * it.quantity).toFixed(2)}</span></div>`).join('')}</div>
             ${o.designNotes ? `<div style="margin-top:6px;font-size:0.8rem;color:var(--muted);font-style:italic;">Notes: ${escHtml(o.designNotes)}</div>` : ''}
             ${proofSection}
         </div>`;
     }).join('');
 }
 
-async function approveProof(orderId) {
-    showToast('Contacting server...');
+// ── Proof Review Modal ───────────────────────────────────────────────────────
+
+let proofReviewOrderId = null;
+let proofReviewToken = null; // for email-link flow
+
+function openProofReviewModal(orderId, token) {
+    closeAccount();
+    const proofFiles = _accountProofFilesMap[orderId] || [];
+    proofReviewOrderId = orderId;
+    proofReviewToken = token || null;
+    document.getElementById('proofReviewSubtitle').textContent = `Quote #${orderId}`;
+    document.getElementById('proofReviewComments').value = '';
+
+    const filesEl = document.getElementById('proofReviewFiles');
+    if (proofFiles && proofFiles.length > 0) {
+        filesEl.innerHTML = `
+            <div style="padding:0.75rem;background:rgba(6,182,212,0.08);border-radius:8px;border:1px solid rgba(6,182,212,0.2);">
+                <div style="font-size:0.78rem;font-weight:700;color:var(--accent);margin-bottom:6px;">📄 Your Proof Files</div>
+                ${proofFiles.map(f => `<a href="${f.downloadUrl}" target="_blank" style="font-size:0.85rem;color:var(--accent2);display:block;margin-bottom:3px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
+            </div>`;
+    } else {
+        filesEl.innerHTML = '';
+    }
+
+    document.getElementById('proofReviewModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeProofReviewModal() {
+    document.getElementById('proofReviewModal').classList.remove('show');
+    document.body.style.overflow = '';
+    proofReviewOrderId = null;
+    proofReviewToken = null;
+}
+
+async function submitProofFeedback(action) {
+    if (!proofReviewOrderId) return;
+
+    const comments = document.getElementById('proofReviewComments').value.trim();
+
+    if (action === 'revision' && !comments) {
+        showToast('Please describe what changes you need before submitting.');
+        return;
+    }
+    if (action === 'cancel') {
+        if (!confirm('Are you sure you want to request cancellation? Our team will review and follow up with you.')) return;
+    }
+
+    const body = { action, comments };
+    if (proofReviewToken) body.token = proofReviewToken;
+    else if (currentUser) body.userId = currentUser.id;
+
     try {
-        const infoRes = await fetch(`${API_BASE}/api/Orders/${orderId}/customer-approve`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.id })
+        const res = await fetch(`${API_BASE}/api/Orders/${proofReviewOrderId}/proof-feedback`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
         });
-        if (!infoRes.ok) { showToast('Could not approve proof. Please contact us.'); return; }
-        showToast('Proof approved! Check your email for the payment link. ✓');
-        openAccount();
-    } catch { showToast('Something went wrong.'); }
+        if (!res.ok) { showToast('Something went wrong. Please try again.'); return; }
+        const data = await res.json();
+
+        closeProofReviewModal();
+
+        if (action === 'approve') {
+            showToast('Proof approved! Check your email for the payment link. ✓');
+            if (data.paymentUrl) {
+                // Redirect to payment flow
+                const params = new URLSearchParams(data.paymentUrl.replace('/?', ''));
+                const payOrder = params.get('payOrder');
+                const token = params.get('token');
+                if (payOrder && token) {
+                    window.location.search = `?payOrder=${payOrder}&token=${token}`;
+                }
+            }
+        } else if (action === 'revision') {
+            showToast("Changes requested! We'll review your feedback and send a revised proof. ✓");
+        } else if (action === 'cancel') {
+            showToast('Cancellation request sent. Our team will follow up with you shortly.');
+        }
+
+        if (typeof openAccount === 'function' && currentUser) openAccount();
+    } catch { showToast('Something went wrong. Please try again.'); }
 }
 
 async function handleUpdateAccount() {
@@ -1067,6 +1227,7 @@ async function handleUpdateAccount() {
 function signOut() {
     try { localStorage.removeItem('currentUser'); } catch { }
     try { localStorage.removeItem('submittedQuotes'); } catch { }
+    clearCart();
     currentUser = null;
     submittedQuotes = [];
     updateQuotesBadge();
@@ -1089,7 +1250,7 @@ async function openAdminPanel() {
 }
 
 function closeAdminPanel() { document.getElementById('adminOverlay').classList.remove('show'); document.body.style.overflow = ''; }
-function closeAdminIfOutside(e) { if (e.target === document.getElementById('adminOverlay')) closeAdminPanel(); }
+function closeAdminIfOutside(e) { }
 
 function switchAdminTab(tab) {
     adminActiveTab = tab;
@@ -1425,7 +1586,7 @@ async function adminSelectOrder(id) {
     const designFiles = (order.uploadedFiles || []).filter(f => !f.originalFileName?.startsWith('PROOF_'));
 
     const statusOptions = order.isQuoteRequest
-        ? ['QuoteRequested', 'ProofSent', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Completed', 'Cancelled']
+        ? ['QuoteRequested', 'ProofSent', 'RevisionRequested', 'CancellationRequested', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Completed', 'Cancelled']
         : ['Paid', 'Completed', 'Cancelled'];
 
     document.getElementById('adminOrderDetail').innerHTML = `
@@ -1477,6 +1638,12 @@ async function adminSelectOrder(id) {
             <div class="admin-detail-section">
                 <div class="admin-detail-label">${order.isQuoteRequest ? 'Design Notes' : 'Special Instructions'}</div>
                 <div style="font-size:13px;font-style:italic;color:var(--muted);">"${escHtml(order.designNotes)}"</div>
+            </div>` : ''}
+
+            ${order.proofComments ? `
+            <div class="admin-detail-section" style="border-left:3px solid #f59e0b;padding-left:10px;">
+                <div class="admin-detail-label" style="color:#f59e0b;">Customer Proof Feedback</div>
+                <div style="font-size:13px;color:var(--text);">"${escHtml(order.proofComments)}"</div>
             </div>` : ''}
 
             ${designFiles.length > 0 ? `

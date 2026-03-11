@@ -24,6 +24,8 @@ public class Order
 
     public string PaymentToken { get; set; } = string.Empty;
 
+    public string ProofComments { get; set; } = string.Empty;
+
     public ICollection<OrderItem>? Items { get; set; }
     public ICollection<UploadedFile>? UploadedFiles { get; set; }
     public ICollection<Notification>? Notifications { get; set; }
