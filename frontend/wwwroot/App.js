@@ -7,6 +7,7 @@ let cart = [];
 let currentUser = null;   // { id, name, email, role, createdAt }
 let squareCard = null;
 let squarePayments = null;
+let submittedQuotes = [];
 
 // Admin state
 let adminProducts = [];
@@ -25,7 +26,6 @@ let pendingPayInfo = null;
 
 function isAdmin() { return currentUser && currentUser.role === 'Admin'; }
 
-/** Build headers that include admin identity when logged in as admin */
 function adminHeaders() {
     return {
         'Content-Type': 'application/json',
@@ -127,11 +127,15 @@ async function init() {
 
 function renderProducts() {
     const grid = document.getElementById('productsGrid');
-    if (products.length === 0) {
-        grid.innerHTML = '<div style="color:var(--muted);padding:2rem;grid-column:1/-1;">No products available.</div>';
+    const query = document.getElementById('productSearch')?.value.trim().toLowerCase() || '';
+    const filtered = query
+        ? products.filter(p => p.name.toLowerCase().startsWith(query))
+        : products;
+    if (filtered.length === 0) {
+        grid.innerHTML = '<div style="color:var(--muted);padding:2rem;grid-column:1/-1;">No products found.</div>';
         return;
     }
-    grid.innerHTML = products.map(p => {
+    grid.innerHTML = filtered.map(p => {
         const tiers = p.priceTiers || [];
         const startPrice = tiers.length ? tiers[0].price : p.basePrice;
         const priceLabel = tiers.length ? `From $${startPrice.toFixed(2)}` : `$${startPrice.toFixed(2)}`;
@@ -150,7 +154,6 @@ function renderProducts() {
 
 // ── Product Detail Modal ───────────────────────────────────────────────────────
 
-// Track selected options (set of productOptionId or index for options without id)
 let pdSelectedOptions = new Set();
 let pdCurrentMode = 'quote';
 
@@ -161,7 +164,7 @@ function openProductDetail(productId) {
     pdCurrentFile = null;
     pdCurrentFileData = null;
     pdSelectedOptions = new Set();
-    pdOptionModifiers = {}; // reset add-on selections
+    pdOptionModifiers = {};
 
     const tiers = (product.priceTiers || []).slice().sort((a, b) => a.minQty - b.minQty);
     pdCurrentQty = tiers.length ? tiers[0].minQty : 1;
@@ -169,7 +172,6 @@ function openProductDetail(productId) {
     document.getElementById('pdName').textContent = product.name;
     document.getElementById('pdDesc').textContent = product.description || 'Professional printing and design service.';
 
-    // Update header price tag
     const headerPrice = document.getElementById('pdPrice');
     if (headerPrice) {
         headerPrice.textContent = tiers.length
@@ -177,11 +179,9 @@ function openProductDetail(productId) {
             : `$${product.basePrice.toFixed(2)} per unit`;
     }
 
-    // Clear the old price section — no tier table, dropdown handles it
     const priceEl = document.getElementById('pdPriceSection');
     priceEl.innerHTML = '';
 
-    // Qty control — styled custom dropdown for tiers, +/- stepper for flat
     const qtySection = document.getElementById('pdQtySection');
     if (tiers.length) {
         qtySection.innerHTML = `
@@ -212,7 +212,6 @@ function openProductDetail(productId) {
             </div>`;
     }
 
-    // Add-on options
     const optionsSection = document.getElementById('pdOptionsSection');
     const opts = product.options || [];
     if (opts.length) {
@@ -271,7 +270,7 @@ function pdGetActiveTierPrice() {
     return price;
 }
 
-let pdOptionModifiers = {}; // id → priceModifier
+let pdOptionModifiers = {};
 
 function pdToggleOption(id, modifier, checked) {
     if (checked) pdOptionModifiers[id] = modifier;
@@ -287,10 +286,8 @@ function pdUpdateTotal() {
     const addons = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
     let total;
     if (tiers.length) {
-        // Tier price is the flat total for that qty band — addons are per-order on top
         total = pdGetActiveTierPrice() + addons;
     } else {
-        // Flat per-unit price × qty + addons
         total = (pdCurrentProduct.basePrice * pdCurrentQty) + addons;
     }
     el.textContent = `$${total.toFixed(2)}`;
@@ -327,7 +324,6 @@ async function pdSubmitQuote() {
     if (!email) { showToast('Please enter your email.'); return; }
     if (!notes) { showToast('Please describe your design — this helps us prepare your quote.'); return; }
 
-    // Collect selected add-on option IDs from pdOptionModifiers
     const selectedOptionIds = Object.keys(pdOptionModifiers).map(id => ({ productOptionId: parseInt(id) }));
 
     const btn = document.getElementById('pdQuoteBtn');
@@ -362,7 +358,6 @@ async function pdSubmitQuote() {
 
         const addonTotal = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
         const baseTotal = pdCurrentProduct.priceTiers?.length ? pdGetActiveTierPrice() : pdCurrentProduct.basePrice * pdCurrentQty;
-        // Save to local history
         submittedQuotes.unshift({
             id: Date.now(),
             productId: pdCurrentProduct.id,
@@ -407,7 +402,6 @@ async function syncQuotesFromServer() {
         const res = await fetch(`${API_BASE}/api/Orders/user/${currentUser.id}`);
         if (!res.ok) return;
         const orders = await res.json();
-        // Rebuild submittedQuotes from real server orders (quote requests only)
         submittedQuotes = orders
             .filter(o => o.isQuoteRequest)
             .map(o => ({
@@ -423,7 +417,7 @@ async function syncQuotesFromServer() {
                 status: o.status
             }));
         saveQuotesToStorage();
-    } catch { /* silently fail — stale local data is fine as fallback */ }
+    } catch { }
     updateQuotesBadge();
 }
 
@@ -530,8 +524,6 @@ function pdAddToCart() {
         const opt = (pdCurrentProduct.options || []).find(o => o.id == id);
         return opt ? { productOptionId: opt.id, optionName: opt.optionName, optionValue: opt.optionValue, priceModifier: mod } : null;
     }).filter(Boolean);
-    // For tiered products: cart qty = 1, basePrice = tier total (the price is for the whole batch)
-    // For flat products: cart qty = pdCurrentQty, basePrice = unit price
     const isTiered = tiers.length > 0;
     addToCart({
         productId: pdCurrentProduct.id,
@@ -628,7 +620,6 @@ async function openRequestModal() {
     closeQuotes();
     document.getElementById('submittedTime').textContent = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
     if (currentUser) { document.getElementById('contactName').value = currentUser.name; document.getElementById('contactEmail').value = currentUser.email; }
-
     renderModalOrderDetails();
     document.getElementById('requestModal').classList.add('show');
     document.body.style.overflow = 'hidden';
@@ -698,7 +689,6 @@ async function submitQuote() {
         }
 
         let squarePaymentId = '';
-
         if (!isQuote) {
             const tokenResult = await squareCard.tokenize();
             if (tokenResult.status !== 'OK') {
@@ -733,14 +723,8 @@ async function submitQuote() {
         });
 
         if (!orderRes.ok) { showToast(`Order failed: ${await orderRes.text()}`); return; }
-        const order = await orderRes.json();
         closeRequestModal(); cart = []; updateBadge();
-
-        if (isQuote) {
-            showToast(`Quote submitted! We'll be in touch with a proof soon. ✓`);
-        } else {
-            showToast(`Order placed successfully! You'll receive a confirmation email. ✓`);
-        }
+        showToast(isQuote ? `Quote submitted! We'll be in touch with a proof soon. ✓` : `Order placed successfully! You'll receive a confirmation email. ✓`);
     } catch (err) {
         showToast('Something went wrong. Please try again.');
     } finally {
@@ -749,18 +733,16 @@ async function submitQuote() {
     }
 }
 
-// ── Payment Link Return (Quote → Pay flow) ────────────────────────────────────
+// ── Payment Link Return ────────────────────────────────────────────────────────
 
 async function checkPaymentReturn() {
     const params = new URLSearchParams(window.location.search);
-
     if (params.get('order') && params.get('paid') === 'true') {
         cart = []; updateBadge();
         showToast(`Order placed successfully! You'll receive a confirmation email. ✓`);
         window.history.replaceState({}, document.title, window.location.pathname);
         return;
     }
-
     const payOrderId = params.get('payOrder');
     const payToken = params.get('token');
     if (payOrderId && payToken) {
@@ -833,13 +815,11 @@ async function submitProofPayment() {
         });
         if (!payRes.ok) { const e = await payRes.json(); showToast(`Payment failed: ${e.errors?.[0] || 'Unknown'}`); return; }
         const payment = await payRes.json();
-
         const completeRes = await fetch(`${API_BASE}/api/Orders/${pendingPayOrderId}/complete-payment`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ paymentToken: pendingPayToken, squarePaymentId: payment.paymentId })
         });
         if (!completeRes.ok) { showToast('Could not record payment. Please contact us.'); return; }
-
         closeProofPayModal();
         showToast(`Payment confirmed! We'll begin production right away. ✓`);
         pendingPayOrderId = null; pendingPayToken = null; pendingPayInfo = null;
@@ -850,7 +830,7 @@ async function submitProofPayment() {
     }
 }
 
-// ── Sign In / Auth — UNIFIED ──────────────────────────────────────────────────
+// ── Sign In / Auth ────────────────────────────────────────────────────────────
 
 function openSignIn() {
     if (currentUser) { openAccount(); return; }
@@ -879,11 +859,6 @@ function switchToSignIn() {
     document.getElementById('createAccountForm').style.display = 'none';
 }
 
-/**
- * Unified login — works for both customers and admins.
- * The server returns { role: "Admin" | "Customer" } as part of UserDto.
- * If role is Admin, we show the admin nav button automatically.
- */
 async function handleSignIn() {
     const email = document.getElementById('signInEmail').value.trim();
     const password = document.getElementById('signInPassword').value;
@@ -901,13 +876,8 @@ async function handleSignIn() {
         try { localStorage.setItem('currentUser', JSON.stringify(currentUser)); } catch { }
         closeSignIn();
         updateNavAfterLogin();
-        // Sync View Quotes panel from server orders so it survives logout/login
         await syncQuotesFromServer();
-        if (isAdmin()) {
-            showToast(`Welcome back, ${currentUser.name}! Admin access granted.`);
-        } else {
-            showToast(`Welcome back, ${currentUser.name}!`);
-        }
+        showToast(isAdmin() ? `Welcome back, ${currentUser.name}! Admin access granted.` : `Welcome back, ${currentUser.name}!`);
     } catch { showToast('Sign in failed. Please try again.'); }
 }
 
@@ -938,9 +908,7 @@ function updateNavAfterLogin() {
     const btn = document.getElementById('authNavBtn');
     const textNode = [...btn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
     if (textNode) textNode.textContent = ` ${currentUser.name}`;
-    // Show Admin nav button if role is Admin
-    const adminBtn = document.getElementById('adminNavBtn');
-    adminBtn.style.display = isAdmin() ? 'flex' : 'none';
+    document.getElementById('adminNavBtn').style.display = isAdmin() ? 'flex' : 'none';
 }
 
 function loadSessionFromStorage() {
@@ -949,7 +917,6 @@ function loadSessionFromStorage() {
         if (raw) {
             currentUser = JSON.parse(raw);
             updateNavAfterLogin();
-            // Refresh quotes from server in the background on page load
             syncQuotesFromServer();
         }
     } catch { }
@@ -959,13 +926,11 @@ function loadSessionFromStorage() {
 
 async function openAccount() {
     if (!currentUser) { openSignIn(); return; }
-
     document.getElementById('accountEmail').textContent = currentUser.email;
     document.getElementById('accountUpdateMsg').textContent = '';
     document.getElementById('updateCurrentPw').value = '';
     document.getElementById('updateNewEmail').value = '';
     document.getElementById('updateNewPw').value = '';
-
     const list = document.getElementById('accountOrdersList');
     list.innerHTML = '<div style="padding:1rem;color:var(--muted);">Loading orders...</div>';
     try {
@@ -1009,9 +974,8 @@ function renderAccountOrders(orders) {
             const baseTotal = it.isTiered ? it.unitPrice : it.unitPrice * it.quantity;
             const addonTotal = (it.options || []).reduce((s, o) => s + Number(o.priceModifier), 0);
             const lineTotal = baseTotal + addonTotal;
-            const qtyLabel = it.isTiered ? `${it.quantity}×` : `${it.quantity}×`;
             const addonText = (it.options || []).filter(o => o.priceModifier !== 0).map(o => `+${o.optionValue}`).join(', ');
-            return `<div style="margin-bottom:4px;">${qtyLabel} ${it.productName}${addonText ? ` <span style="color:var(--muted);font-size:0.8rem;">(${addonText})</span>` : ''} <span style="color:var(--muted);">— $${lineTotal.toFixed(2)}</span></div>`;
+            return `<div style="margin-bottom:4px;">${it.quantity}× ${it.productName}${addonText ? ` <span style="color:var(--muted);font-size:0.8rem;">(${addonText})</span>` : ''} <span style="color:var(--muted);">— $${lineTotal.toFixed(2)}</span></div>`;
         }).join('')}</div>
             ${o.designNotes ? `<div style="margin-top:6px;font-size:0.8rem;color:var(--muted);font-style:italic;">Notes: ${escHtml(o.designNotes)}</div>` : ''}
             ${proofSection}
@@ -1038,10 +1002,8 @@ async function handleUpdateAccount() {
     const newEmail = document.getElementById('updateNewEmail').value.trim();
     const newPw = document.getElementById('updateNewPw').value;
     const msgEl = document.getElementById('accountUpdateMsg');
-
     if (!currentPw) { msgEl.textContent = 'Enter your current password to make changes.'; msgEl.style.color = '#ef4444'; return; }
     if (!newEmail && !newPw) { msgEl.textContent = 'Enter a new email or password to update.'; msgEl.style.color = '#ef4444'; return; }
-
     try {
         const res = await fetch(`${API_BASE}/api/Users/${currentUser.id}`, {
             method: 'PUT',
@@ -1114,7 +1076,6 @@ async function adminLoadProducts() {
         const res = await fetch(`${API_BASE}/api/Products/all`, {
             headers: { 'X-User-Id': String(currentUser?.id), 'X-User-Role': currentUser?.role || '' }
         });
-        // Fall back to public endpoint if admin-specific not available
         const r = res.ok ? res : await fetch(`${API_BASE}/api/Products`);
         if (!r.ok) throw new Error();
         adminProducts = await r.json();
@@ -1124,9 +1085,16 @@ async function adminLoadProducts() {
 
 function adminRenderList() {
     const list = document.getElementById('adminProductList');
+    const query = document.getElementById('adminProductSearch')?.value.trim().toLowerCase() || '';
+    const filtered = query
+        ? adminProducts.filter(p => p.name.toLowerCase().startsWith(query))
+        : adminProducts;
     document.getElementById('adminCountBadge').textContent = adminProducts.length;
-    if (adminProducts.length === 0) { list.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No products yet.</div>'; return; }
-    list.innerHTML = adminProducts.map((p, i) => `
+    if (filtered.length === 0) {
+        list.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No products found.</div>';
+        return;
+    }
+    list.innerHTML = filtered.map((p, i) => `
         <div class="admin-product-card ${p.id === adminActiveId ? 'active' : ''}" data-product-id="${p.id}" style="animation-delay:${i * 0.03}s" onclick="adminStartEdit(${p.id})">
             <div style="flex:1;min-width:0;">
                 <div class="admin-product-name">${escHtml(p.name)}</div>
@@ -1347,8 +1315,7 @@ async function adminConfirmDelete() {
     if (!adminDeleteTargetId) return;
     try {
         const res = await fetch(`${API_BASE}/api/Products/${adminDeleteTargetId}`, {
-            method: 'DELETE',
-            headers: adminHeaders()
+            method: 'DELETE', headers: adminHeaders()
         });
         if (res.ok || res.status === 204) {
             showToast('Product deleted.');
@@ -1379,7 +1346,6 @@ function adminRenderOrders() {
         container.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No orders yet.</div>';
         return;
     }
-
     container.innerHTML = `
         <div class="admin-orders-layout">
             <div class="admin-orders-list" id="adminOrdersList">
@@ -1415,19 +1381,14 @@ function adminOrderCard(o) {
 async function adminSelectOrder(id) {
     const order = adminOrders.find(o => o.id === id);
     if (!order) return;
-
     document.querySelectorAll('.admin-order-card').forEach(c => c.classList.remove('active'));
-    const cards = document.querySelectorAll('.admin-order-card');
-    cards.forEach(c => { if (c.textContent.includes(`#${id}`)) c.classList.add('active'); });
-
+    document.querySelectorAll('.admin-order-card').forEach(c => { if (c.textContent.includes(`#${id}`)) c.classList.add('active'); });
     const sc = getStatusColor(order.status);
     const proofFiles = (order.uploadedFiles || []).filter(f => f.originalFileName?.startsWith('PROOF_'));
     const designFiles = (order.uploadedFiles || []).filter(f => !f.originalFileName?.startsWith('PROOF_'));
-
     const statusOptions = order.isQuoteRequest
         ? ['QuoteRequested', 'ProofSent', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Completed', 'Cancelled']
         : ['Paid', 'Completed', 'Cancelled'];
-
     document.getElementById('adminOrderDetail').innerHTML = `
         <div style="padding:24px;overflow-y:auto;flex:1;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px;">
@@ -1437,7 +1398,6 @@ async function adminSelectOrder(id) {
                 </div>
                 <span style="font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;background:${sc.bg};color:${sc.text}">${formatStatus(order.status)}</span>
             </div>
-
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Contact</div>
                 ${order.customerName ? `<div style="font-weight:600;">${escHtml(order.customerName)}</div>` : ''}
@@ -1446,51 +1406,27 @@ async function adminSelectOrder(id) {
                 </div>
                 ${order.customerPhone ? `<div style="font-size:13px;margin-top:2px;color:var(--muted);">${escHtml(formatPhone(order.customerPhone))}</div>` : ''}
             </div>
-
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Items</div>
                 ${(order.items || []).map(i => {
         const linePrice = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
         const qtyLabel = i.isTiered ? `qty ${i.quantity}` : `${i.quantity}×`;
-        const optionNames = i.options?.map(o => o.optionValue).join(', ');
         const optionLines = (i.options || []).filter(o => o.priceModifier !== 0).map(o =>
-            `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0 2px 12px;color:var(--muted);">
-                            <span>+ ${escHtml(o.optionValue)}</span>
-                            <span>+$${o.priceModifier.toFixed(2)}</span>
-                        </div>`
+            `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0 2px 12px;color:var(--muted);"><span>+ ${escHtml(o.optionValue)}</span><span>+$${o.priceModifier.toFixed(2)}</span></div>`
         ).join('');
-        return `
-                    <div style="padding:4px 0;border-bottom:1px solid var(--border);">
-                        <div style="display:flex;justify-content:space-between;font-size:13px;">
-                            <span><strong>${qtyLabel}</strong> ${escHtml(i.productName)}</span>
-                            <span style="font-weight:600;">$${linePrice.toFixed(2)}</span>
-                        </div>
-                        ${optionLines}
-                    </div>`;
+        return `<div style="padding:4px 0;border-bottom:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+                <span><strong>${qtyLabel}</strong> ${escHtml(i.productName)}</span>
+                <span style="font-weight:600;">$${linePrice.toFixed(2)}</span>
+            </div>${optionLines}</div>`;
     }).join('')}
                 <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding-top:8px;">
                     <span>Total</span><span style="color:var(--accent);">$${order.totalPrice.toFixed(2)}</span>
                 </div>
             </div>
-
-            ${order.designNotes ? `
-            <div class="admin-detail-section">
-                <div class="admin-detail-label">${order.isQuoteRequest ? 'Design Notes' : 'Special Instructions'}</div>
-                <div style="font-size:13px;font-style:italic;color:var(--muted);">"${escHtml(order.designNotes)}"</div>
-            </div>` : ''}
-
-            ${designFiles.length > 0 ? `
-            <div class="admin-detail-section">
-                <div class="admin-detail-label">Customer Files</div>
-                ${designFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName}" style="display:block;font-size:13px;color:var(--accent2);margin-bottom:4px;">⬇ ${f.originalFileName}</a>`).join('')}
-            </div>` : ''}
-
-            ${proofFiles.length > 0 ? `
-            <div class="admin-detail-section">
-                <div class="admin-detail-label">Uploaded Proofs</div>
-                ${proofFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName.replace('PROOF_', '')}" style="display:block;font-size:13px;color:var(--accent);margin-bottom:4px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
-            </div>` : ''}
-
+            ${order.designNotes ? `<div class="admin-detail-section"><div class="admin-detail-label">${order.isQuoteRequest ? 'Design Notes' : 'Special Instructions'}</div><div style="font-size:13px;font-style:italic;color:var(--muted);">"${escHtml(order.designNotes)}"</div></div>` : ''}
+            ${designFiles.length > 0 ? `<div class="admin-detail-section"><div class="admin-detail-label">Customer Files</div>${designFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName}" style="display:block;font-size:13px;color:var(--accent2);margin-bottom:4px;">⬇ ${f.originalFileName}</a>`).join('')}</div>` : ''}
+            ${proofFiles.length > 0 ? `<div class="admin-detail-section"><div class="admin-detail-label">Uploaded Proofs</div>${proofFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName.replace('PROOF_', '')}" style="display:block;font-size:13px;color:var(--accent);margin-bottom:4px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}</div>` : ''}
             ${order.isQuoteRequest && ['QuoteRequested', 'ProofSent'].includes(order.status) ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Upload Proof</div>
@@ -1499,7 +1435,6 @@ async function adminSelectOrder(id) {
                     <button onclick="adminUploadProof(${order.id})" style="padding:8px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Upload Proof</button>
                 </div>
             </div>` : ''}
-
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Update Status</div>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1562,15 +1497,12 @@ function adminRenderFiles(files) {
         container.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No files uploaded yet.</div>';
         return;
     }
-
-    // Group files by orderId
     const grouped = {};
     files.forEach(f => {
         const key = f.orderId ? `Order #${f.orderId}` : 'Unattached';
         if (!grouped[key]) grouped[key] = [];
         grouped[key].push(f);
     });
-
     container.innerHTML = Object.entries(grouped).map(([group, groupFiles]) => `
         <div style="margin-bottom:24px;">
             <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);">${group}</div>
@@ -1582,20 +1514,18 @@ function adminRenderFiles(files) {
         const tagColor = isProof ? 'rgba(6,182,212,0.12)' : 'rgba(124,58,237,0.12)';
         const tagText = isProof ? '#06b6d4' : '#7c3aed';
         const tagLabel = isProof ? 'Proof' : 'Customer File';
-        return `
-                        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);">
-                            <span style="font-size:18px;">${icon}</span>
-                            <div style="flex:1;min-width:0;">
-                                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(displayName)}</div>
-                                <div style="font-size:11px;color:var(--muted);">${new Date(f.uploadedAt).toLocaleString()}</div>
-                            </div>
-                            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${tagColor};color:${tagText};white-space:nowrap;">${tagLabel}</span>
-                            <a href="${f.downloadUrl}" download="${escHtml(displayName)}" style="padding:6px 12px;background:var(--accent2);color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⬇ Download</a>
-                        </div>`;
+        return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);">
+            <span style="font-size:18px;">${icon}</span>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(displayName)}</div>
+                <div style="font-size:11px;color:var(--muted);">${new Date(f.uploadedAt).toLocaleString()}</div>
+            </div>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${tagColor};color:${tagText};white-space:nowrap;">${tagLabel}</span>
+            <a href="${f.downloadUrl}" download="${escHtml(displayName)}" style="padding:6px 12px;background:var(--accent2);color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⬇ Download</a>
+        </div>`;
     }).join('')}
             </div>
-        </div>
-    `).join('');
+        </div>`).join('');
 }
 
 init();

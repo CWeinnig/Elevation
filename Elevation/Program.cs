@@ -33,6 +33,21 @@ using (var scope = app.Services.CreateScope())
     var context = services.GetRequiredService<AppDbContext>();
     context.Database.Migrate();
     DbInitializer.Initialize(context);
+
+    // Seed admin user if not already present
+    if (!context.Users.Any(u => u.Role == "Admin"))
+    {
+        context.Users.Add(new User
+        {
+            Name = "Admin",
+            Email = "name@email.com",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("123"),
+            Role = "Admin",
+            EmailConfirmed = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.SaveChanges();
+    }
 }
 
 if (app.Environment.IsDevelopment())
@@ -42,11 +57,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseDefaultFiles(); 
+app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseCors("AllowAll");
 app.MapControllers();
-
 
 app.MapFallbackToFile("index.html");
 

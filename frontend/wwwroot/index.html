@@ -41,6 +41,17 @@
     <div class="products-wrapper">
         <div class="products-section">
             <h2>Our Products</h2>
+            <div style="max-width:400px;margin:0 auto 2rem;">
+                <div style="position:relative;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"
+                        style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;">
+                        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <input id="productSearch" type="text" placeholder="Search products..."
+                        oninput="renderProducts()"
+                        style="width:100%;padding:10px 16px 10px 38px;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;outline:none;box-sizing:border-box;" />
+                </div>
+            </div>
             <div class="products-grid" id="productsGrid">
                 <div style="color:var(--muted);padding:2rem;grid-column:1/-1;">Loading products...</div>
             </div>
@@ -129,7 +140,6 @@
                 <textarea id="customDetails" rows="2" placeholder="Any special instructions, colors, or requests..."></textarea>
             </div>
 
-            <!-- Design Notes (quote mode only) -->
             <div id="designNotesSection" style="display:none;">
                 <p class="section-label">Describe Your Design <span style="color:#ef4444;">*</span></p>
                 <div class="design-notes-box">
@@ -139,7 +149,6 @@
                 <p style="font-size:0.78rem;color:var(--muted);margin-top:6px;">✓ No payment required until you approve the proof.</p>
             </div>
 
-            <!-- Payment section (pay-now mode only) -->
             <div id="paymentSection">
                 <p class="section-label">Payment Information</p>
                 <div id="square-card-container" style="min-height:80px;margin-bottom:1rem;"></div>
@@ -153,7 +162,7 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
-         PROOF PAYMENT MODAL (returned via payment link)
+         PROOF PAYMENT MODAL
     ════════════════════════════════════════════════════════ -->
     <div class="modal-overlay" id="proofPayModal" onclick="if(event.target===this)closeProofPayModal()">
         <div class="modal" id="proofPayBox">
@@ -185,7 +194,7 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
-         SIGN IN MODAL — Unified login (no customer/admin tabs)
+         SIGN IN MODAL
     ════════════════════════════════════════════════════════ -->
     <div class="modal-overlay" id="signInModal" onclick="closeSignInIfOutside(event)">
         <div class="modal signin-modal" id="signInBox">
@@ -197,7 +206,6 @@
                 <button class="close-btn" onclick="closeSignIn()">&times;</button>
             </div>
 
-            <!-- Sign In Form -->
             <div id="signInForm">
                 <div class="form-group"><label class="form-label">Email</label><input type="email" id="signInEmail" placeholder="your@email.com" /></div>
                 <div class="form-group"><label class="form-label">Password</label><input type="password" id="signInPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleSignIn()" /></div>
@@ -205,7 +213,6 @@
                 <p class="signin-switch">Don't have an account? <a href="#" onclick="switchToCreateAccount(); return false;">Create one</a></p>
             </div>
 
-            <!-- Create Account Form -->
             <div id="createAccountForm" style="display:none;">
                 <div class="form-group"><label class="form-label">Full Name <span>*</span></label><input type="text" id="createName" placeholder="Your name" /></div>
                 <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="createEmail" placeholder="your@email.com" /></div>
@@ -229,7 +236,6 @@
                 <button class="close-btn" onclick="closeAccount()">&times;</button>
             </div>
 
-            <!-- Profile -->
             <div style="margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;gap:12px;">
                 <div>
                     <div style="font-size:0.9rem;color:var(--muted);">Signed in as</div>
@@ -238,7 +244,6 @@
                 <button class="btn-ghost" onclick="signOut()" style="font-size:0.85rem;padding:6px 10px;border-radius:8px;">Sign out</button>
             </div>
 
-            <!-- Update account -->
             <details class="account-details-section">
                 <summary>Update Email or Password</summary>
                 <div style="padding:12px 0 4px;">
@@ -275,7 +280,6 @@
                     <span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#fff;font-weight:700;">Admin Dashboard</span>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <!-- Tab switcher -->
                     <div class="admin-tab-bar">
                         <button class="admin-tab active" id="adminTabProducts" onclick="switchAdminTab('products')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
@@ -306,6 +310,12 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
                                 Add Product
                             </button>
+                        </div>
+                        <!-- ── ADMIN PRODUCT SEARCH ── -->
+                        <div style="padding:10px 12px 0;">
+                            <input id="adminProductSearch" type="text" placeholder="Search products..."
+                                oninput="adminRenderList()"
+                                style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;box-sizing:border-box;" />
                         </div>
                         <div class="admin-product-list" id="adminProductList">
                             <div style="padding:2rem;color:var(--muted);text-align:center;">Loading…</div>
@@ -372,7 +382,6 @@
 
                 <!-- ── ORDERS PANE ── -->
                 <div class="admin-orders-pane" id="adminOrdersPane" style="display:none;flex-direction:column;">
-                    <!-- Rendered dynamically by adminRenderOrders() -->
                 </div>
 
                 <!-- ── FILES PANE ── -->
@@ -419,18 +428,11 @@
             <div class="pd-body">
                 <div class="pd-desc" id="pdDesc"></div>
 
-                <!-- Price table or flat price — rendered by JS -->
                 <div id="pdPriceSection" style="margin-bottom:16px;"></div>
+                <div id="pdQtySection" style="margin-bottom:16px;"></div>
 
-                <!-- Qty: dropdown (tiers) or stepper (flat) — rendered by JS -->
-                <div id="pdQtySection" style="margin-bottom:16px;">
-                    <!-- populated by openProductDetail -->
-                </div>
-
-                <!-- Est. total always visible -->
                 <div class="pd-est-total" style="margin-bottom:16px;">Est. total: <strong id="pdEstTotal">$0.00</strong></div>
 
-                <!-- Add-on options — shown only when product has options -->
                 <div id="pdOptionsSection" style="display:none;margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:10px;"></div>
 
                 <div class="pd-section-label" style="margin-bottom:10px;">How would you like to proceed?</div>
