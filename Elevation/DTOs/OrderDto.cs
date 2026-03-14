@@ -41,7 +41,7 @@ public class OrderDto
     public string CustomerEmail { get; set; } = string.Empty;
     public string CustomerPhone { get; set; } = string.Empty;
     public string ProofComments { get; set; } = string.Empty;
-    // PaymentToken intentionally excluded from standard responses
+    public string PaymentToken { get; set; } = string.Empty; // Only populated for AwaitingPayment orders
     public List<OrderItemDto> Items { get; set; } = new();
     public List<UploadedFileDto> UploadedFiles { get; set; } = new();
 }

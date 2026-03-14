@@ -112,6 +112,7 @@ public class OrdersController : ControllerBase
             }
 
             // For tiered products, baseCost IS the batch total — don't multiply by qty
+            // For flat products, only base price scales with quantity; add-ons are per-order, not per-unit
             totalPrice += isTiered ? (baseCost + addonCost) : (baseCost + addonCost) * itemDto.Quantity;
             orderItems.Add(new OrderItem
             {
@@ -653,6 +654,7 @@ public class OrdersController : ControllerBase
         CustomerName = order.User?.Name ?? string.Empty,
         CustomerEmail = order.User?.Email ?? order.GuestEmail,
         CustomerPhone = order.CustomerPhone ?? string.Empty,
+        PaymentToken = order.Status == "AwaitingPayment" ? order.PaymentToken : string.Empty,
         Items = order.Items?.Select(i => new OrderItemDto
         {
             Id = i.Id,

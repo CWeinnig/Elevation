@@ -134,11 +134,13 @@ async function init() {
 
 function renderProducts() {
     const grid = document.getElementById('productsGrid');
-    if (products.length === 0) {
-        grid.innerHTML = '<div style="color:var(--muted);padding:2rem;grid-column:1/-1;">No products available.</div>';
+    const query = document.getElementById('productSearch')?.value.trim().toLowerCase() || '';
+    const filtered = query ? products.filter(p => p.name.toLowerCase().startsWith(query)) : products;
+    if (filtered.length === 0) {
+        grid.innerHTML = '<div style="color:var(--muted);padding:2rem;grid-column:1/-1;">No products found.</div>';
         return;
     }
-    grid.innerHTML = products.map(p => {
+    grid.innerHTML = filtered.map(p => {
         const tiers = p.priceTiers || [];
         const startPrice = tiers.length ? tiers[0].price : p.basePrice;
         const priceLabel = tiers.length ? `From $${startPrice.toFixed(2)}` : `$${startPrice.toFixed(2)}`;
@@ -474,7 +476,7 @@ function renderQuotesHistory() {
                 <span style="color:var(--accent);font-weight:700;">$${Number(q.estimatedPrice).toFixed(2)}</span>
             </div>
             ${q.notes ? `<div class="qh-notes">"${escHtml(q.notes)}"</div>` : ''}
-            ${canApprove ? `<button onclick="openProofReviewModal(${q.id}, null)" style="margin-top:8px;width:100%;padding:8px 14px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">👁 Review Proof</button>` : ''}
+            ${canApprove ? `<button onclick="openProofReviewModal(${q.id}, null)" style="margin-top:8px;width:100%;padding:8px 14px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Review Proof</button>` : ''}
             <div class="qh-footer">
                 <span class="qh-date">${date}</span>
                 <button class="qh-remove-btn" onclick="removeQuote(${q.id})">Remove</button>
@@ -615,8 +617,8 @@ function clearCart() { const k = cartStorageKey(); if (k) try { localStorage.rem
 
 function getCartSubtotal() {
     return cart.reduce((s, item) => {
-        const unitPrice = item.basePrice + item.selectedOptions.reduce((os, o) => os + (o.priceModifier || 0), 0);
-        return s + unitPrice * item.qty;
+        const addonTotal = item.selectedOptions.reduce((os, o) => os + (o.priceModifier || 0), 0);
+        return s + (item.basePrice + addonTotal) * item.qty;
     }, 0);
 }
 
@@ -666,17 +668,12 @@ function updateCheckoutMode() {
 function renderModalOrderDetails() {
     document.getElementById('modalOrderDetails').innerHTML = cart.map(item => {
         const addonTotal = item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
-        const unitPrice = item.basePrice + addonTotal;
+        const baseLineTotal = item.basePrice * item.qty;
         const optLines = item.selectedOptions.filter(o => o.priceModifier).map(o =>
-            `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)}</span></div>`
+            `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)} each</span></div>`
         ).join('');
-        return `<div class="order-detail-card"><div><div style="font-weight:700;">${item.name}</div>${optLines}<div class="order-detail-qty">Qty: ${item.qty} × $${unitPrice.toFixed(2)}</div>${item.imageName ? `<div class="order-detail-file">📎 ${item.imageName}</div>` : ''}</div><div style="font-weight:700;">$${(unitPrice * item.qty).toFixed(2)}</div></div>`;
-    }).join('');
-    const subtotal = getCartSubtotal();
-    const totalItems = cart.reduce((s, i) => s + i.qty, 0);
-    document.getElementById('modalSubtotal').textContent = `$${subtotal.toFixed(2)}`;
-    document.getElementById('modalTotal').textContent = `$${subtotal.toFixed(2)}`;
-    document.getElementById('modalQtyDisplay').textContent = `×${totalItems} item${totalItems !== 1 ? 's' : ''}`;
+        return `<div class="order-detail-card"><div><div style="font-weight:700;">${item.name}</div><div class="order-detail-qty">${item.qty} × $${item.basePrice.toFixed(2)}</div>${optLines}</div></div>`;
+    }).join('') + `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:12px 4px 4px;border-top:1px solid var(--border);margin-top:8px;"><span>Total</span><span style="color:var(--accent);">$${getCartSubtotal().toFixed(2)}</span></div>`;
 }
 
 function closeRequestModal() {
@@ -819,14 +816,23 @@ async function checkPaymentReturn() {
 
 function openProofPaymentModal(info) {
     document.getElementById('proofPayEmail').textContent = info.email;
-    document.getElementById('proofPayTotal').textContent = `$${Number(info.totalPrice).toFixed(2)}`;
+    // proofPayTotal removed from HTML
     const itemsEl = document.getElementById('proofPayItems');
     itemsEl.innerHTML = (info.items || []).map(i => {
+        const addonTotal = (i.options || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
+        const baseLineTotal = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
         const optionLines = (i.options || []).filter(o => o.priceModifier !== 0).map(o =>
-            `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)}</span></div>`
+            `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)} each</span></div>`
         ).join('');
-        return `<div class="order-detail-card"><div><div style="font-weight:700;">${i.productName}</div><div class="order-detail-qty">Qty: ${i.quantity}</div>${optionLines}</div><div style="font-weight:700;">$${Number(info.totalPrice).toFixed(2)}</div></div>`;
-    }).join('');
+        const qtyLine = i.isTiered ? `Qty: ${i.quantity}` : `${i.quantity} × $${i.unitPrice.toFixed(2)}`;
+        return `<div class="order-detail-card">
+            <div>
+                <div style="font-weight:700;">${i.productName}</div>
+                <div class="order-detail-qty">${qtyLine}</div>
+                ${optionLines}
+            </div>
+        </div>`;
+    }).join('') + `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:12px 4px 4px;border-top:1px solid var(--border);margin-top:8px;"><span>Total</span><span style="color:var(--accent);">$${Number(info.totalPrice).toFixed(2)}</span></div>`;
     document.getElementById('proofPayModal').classList.add('show');
     document.body.style.overflow = 'hidden';
     initProofPaySquare();
@@ -842,6 +848,19 @@ async function initProofPaySquare() {
     } catch (e) {
         document.getElementById('proof-pay-card-container').innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">Payment form failed to load.</p>';
     }
+}
+
+async function reopenPaymentModal(orderId, token) {
+    try {
+        const res = await fetch(`${API_BASE}/api/Orders/${orderId}/payment-info?token=${encodeURIComponent(token)}`);
+        if (!res.ok) { showToast('Payment link is no longer valid. Please contact us.'); return; }
+        const info = await res.json();
+        pendingPayOrderId = String(orderId);
+        pendingPayToken = token;
+        pendingPayInfo = info;
+        closeAccount();
+        openProofPaymentModal(info);
+    } catch { showToast('Could not load payment info. Please contact us.'); }
 }
 
 function closeProofPayModal() {
@@ -1087,9 +1106,10 @@ function renderAccountOrders(orders) {
         _accountProofFilesMap[o.id] = proofFiles;
         const proofSection = proofFiles.length > 0 ? `
             <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:rgba(6,182,212,0.08);border-radius:8px;border:1px solid rgba(6,182,212,0.2);">
-                <div style="font-size:0.78rem;font-weight:700;color:var(--accent);margin-bottom:6px;">📄 Proofs Ready for Review</div>
-                ${proofFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName.replace('PROOF_', '')}" style="font-size:0.82rem;color:var(--accent2);display:block;margin-bottom:3px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
-                ${o.status === 'ProofSent' ? `<button onclick="openProofReviewModal(${o.id}, null)" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">👁 Review Proof</button>` : ''}
+                <div style="font-size:0.78rem;font-weight:700;color:var(--accent);margin-bottom:6px;">Proofs Ready for Review</div>
+                ${proofFiles.map((f, idx) => '<a href="' + API_BASE + '/api/Files/' + f.id + '/download" download="' + f.originalFileName.replace('PROOF_', '') + '" style="font-size:0.82rem;color:var(--accent2);display:block;margin-bottom:3px;">⬇ Proof' + (proofFiles.length > 1 ? ' ' + (idx + 1) : '') + '</a>').join('')}
+                ${o.status === 'ProofSent' ? `<button onclick="openProofReviewModal(${o.id}, null)" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Review Proof</button>` : ''}
+                ${o.status === 'AwaitingPayment' ? `<button onclick="reopenPaymentModal(${o.id}, '${o.paymentToken}')" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Complete Payment</button>` : ''}
             </div>` : '';
         return `
         <div class="order-card">
@@ -1103,7 +1123,14 @@ function renderAccountOrders(orders) {
                     <span style="font-weight:700;color:var(--accent);">$${o.totalPrice.toFixed(2)}</span>
                 </div>
             </div>
-            <div style="margin-top:0.5rem;font-size:0.9rem;">${o.items.map(it => `<div style="margin-bottom:4px;">${it.quantity}x ${it.productName} <span style="color:var(--muted);">— $${(it.unitPrice * it.quantity).toFixed(2)}</span></div>`).join('')}</div>
+            <div style="margin-top:0.5rem;font-size:0.9rem;">${o.items.map(it => {
+            const addonTotal = (it.options || []).reduce((s, op) => s + (op.priceModifier || 0), 0);
+            const baseLineTotal = it.isTiered ? it.unitPrice : it.unitPrice * it.quantity;
+            const optionLines = (it.options || []).filter(op => op.priceModifier !== 0).map(op =>
+                `<div style="font-size:0.8rem;color:var(--muted);padding-left:8px;">+ ${escHtml(op.optionValue)} <span style="color:var(--accent2);">+$${op.priceModifier.toFixed(2)} each</span></div>`
+            ).join('');
+            return `<div style="margin-bottom:6px;"><div>${it.quantity}x ${escHtml(it.productName)} <span style="color:var(--muted);">— $${baseLineTotal.toFixed(2)}</span></div>${optionLines}</div>`;
+        }).join('')}</div>
             ${o.designNotes ? `<div style="margin-top:6px;font-size:0.8rem;color:var(--muted);font-style:italic;">Notes: ${escHtml(o.designNotes)}</div>` : ''}
             ${proofSection}
         </div>`;
@@ -1120,7 +1147,7 @@ function openProofReviewModal(orderId, token) {
     const proofFiles = _accountProofFilesMap[orderId] || [];
     proofReviewOrderId = orderId;
     proofReviewToken = token || null;
-    document.getElementById('proofReviewSubtitle').textContent = `Quote #${orderId}`;
+    document.getElementById('proofReviewSubtitle').textContent = '';
     document.getElementById('proofReviewComments').value = '';
 
     const filesEl = document.getElementById('proofReviewFiles');
@@ -1128,7 +1155,7 @@ function openProofReviewModal(orderId, token) {
         filesEl.innerHTML = `
             <div style="padding:0.75rem;background:rgba(6,182,212,0.08);border-radius:8px;border:1px solid rgba(6,182,212,0.2);">
                 <div style="font-size:0.78rem;font-weight:700;color:var(--accent);margin-bottom:6px;">📄 Your Proof Files</div>
-                ${proofFiles.map(f => `<a href="${f.downloadUrl}" target="_blank" style="font-size:0.85rem;color:var(--accent2);display:block;margin-bottom:3px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
+                ${proofFiles.map((f, idx) => '<a href="' + API_BASE + '/api/Files/' + f.id + '/download" target="_blank" style="font-size:0.85rem;color:var(--accent2);display:block;margin-bottom:3px;">⬇ Proof' + (proofFiles.length > 1 ? ' ' + (idx + 1) : '') + '</a>').join('')}
             </div>`;
     } else {
         filesEl.innerHTML = '';
@@ -1285,9 +1312,11 @@ async function adminLoadProducts() {
 
 function adminRenderList() {
     const list = document.getElementById('adminProductList');
+    const query = document.getElementById('adminProductSearch')?.value.trim().toLowerCase() || '';
+    const filtered = query ? adminProducts.filter(p => p.name.toLowerCase().startsWith(query)) : adminProducts;
     document.getElementById('adminCountBadge').textContent = adminProducts.length;
-    if (adminProducts.length === 0) { list.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No products yet.</div>'; return; }
-    list.innerHTML = adminProducts.map((p, i) => `
+    if (filtered.length === 0) { list.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No products found.</div>'; return; }
+    list.innerHTML = filtered.map((p, i) => `
         <div class="admin-product-card ${p.id === adminActiveId ? 'active' : ''}" data-product-id="${p.id}" style="animation-delay:${i * 0.03}s" onclick="adminStartEdit(${p.id})">
             <div style="flex:1;min-width:0;">
                 <div class="admin-product-name">${escHtml(p.name)}</div>
@@ -1557,7 +1586,7 @@ function adminRenderOrders() {
 
 function adminOrderCard(o) {
     const sc = getStatusColor(o.status);
-    const label = o.isQuoteRequest ? '📋 Quote' : '📦 Order';
+    const label = o.isQuoteRequest ? 'Quote' : 'Order';
     const contact = o.customerName || o.customerEmail || o.guestEmail || `User #${o.userId}`;
     return `
         <div class="admin-order-card" onclick="adminSelectOrder(${o.id})">
@@ -1593,7 +1622,7 @@ async function adminSelectOrder(id) {
         <div style="padding:24px;overflow-y:auto;flex:1;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px;">
                 <div>
-                    <div style="font-size:18px;font-weight:700;">${order.isQuoteRequest ? '📋 Quote' : '📦 Order'} #${order.id}</div>
+                    <div style="font-size:18px;font-weight:700;">${order.isQuoteRequest ? 'Quote' : 'Order'} #${order.id}</div>
                     <div style="font-size:12px;color:var(--muted);margin-top:2px;">${new Date(order.createdAt).toLocaleString()}</div>
                 </div>
                 <span style="font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;background:${sc.bg};color:${sc.text}">${formatStatus(order.status)}</span>
@@ -1649,16 +1678,16 @@ async function adminSelectOrder(id) {
             ${designFiles.length > 0 ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Customer Files</div>
-                ${designFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName}" style="display:block;font-size:13px;color:var(--accent2);margin-bottom:4px;">⬇ ${f.originalFileName}</a>`).join('')}
+                ${designFiles.map(f => `<a href="${API_BASE}/api/Files/${f.id}/download" download="${f.originalFileName}" style="display:block;font-size:13px;color:var(--accent2);margin-bottom:4px;">⬇ ${f.originalFileName}</a>`).join('')}
             </div>` : ''}
 
             ${proofFiles.length > 0 ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Uploaded Proofs</div>
-                ${proofFiles.map(f => `<a href="${f.downloadUrl}" download="${f.originalFileName.replace('PROOF_', '')}" style="display:block;font-size:13px;color:var(--accent);margin-bottom:4px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
+                ${proofFiles.map(f => `<a href="${API_BASE}/api/Files/${f.id}/download" download="${f.originalFileName.replace('PROOF_', '')}" style="display:block;font-size:13px;color:var(--accent);margin-bottom:4px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
             </div>` : ''}
 
-            ${order.isQuoteRequest && ['QuoteRequested', 'ProofSent'].includes(order.status) ? `
+            ${order.isQuoteRequest && ['QuoteRequested', 'ProofSent', 'RevisionRequested'].includes(order.status) ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Upload Proof</div>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1687,7 +1716,7 @@ async function adminUploadProof(orderId) {
     try {
         const res = await fetch(`${API_BASE}/api/Orders/${orderId}/proof`, { method: 'POST', body: fd });
         if (!res.ok) { showToast('Upload failed.'); return; }
-        showToast('Proof uploaded! Status set to Proof Sent. ✓');
+        showToast('Proof uploaded! Status set to Proof Sent.');
         await adminLoadOrders();
         adminSelectOrder(orderId);
     } catch { showToast('Network error.'); }
@@ -1702,7 +1731,7 @@ async function adminUpdateStatus(orderId) {
             body: JSON.stringify({ newStatus: select.value })
         });
         if (!res.ok) { showToast('Status update failed.'); return; }
-        showToast('Status updated! Customer notified. ✓');
+        showToast('Status updated! Customer notified.');
         await adminLoadOrders();
         adminSelectOrder(orderId);
     } catch { showToast('Network error.'); }
@@ -1757,7 +1786,7 @@ function adminRenderFiles(files) {
                                 <div style="font-size:11px;color:var(--muted);">${new Date(f.uploadedAt).toLocaleString()}</div>
                             </div>
                             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${tagColor};color:${tagText};white-space:nowrap;">${tagLabel}</span>
-                            <a href="${f.downloadUrl}" download="${escHtml(displayName)}" style="padding:6px 12px;background:var(--accent2);color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⬇ Download</a>
+                            <a href="${API_BASE}/api/Files/${f.id}/download" download="${escHtml(displayName)}" style="padding:6px 12px;background:var(--accent2);color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⬇ Download</a>
                         </div>`;
     }).join('')}
             </div>

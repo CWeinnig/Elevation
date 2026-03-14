@@ -206,22 +206,23 @@ public class SmtpEmailService : IEmailService
         {
             var label = WebUtility.HtmlEncode(item.DisplayName ?? item.ProductName);
             var addonTotal = item.Options.Sum(o => o.PriceModifier);
-            var lineTotal = item.IsTiered ? item.UnitPrice : (item.UnitPrice + addonTotal) * item.Quantity;
+            // Base line total = base price * qty (add-ons shown separately as per-unit)
+            var lineTotal = item.IsTiered ? item.UnitPrice : item.UnitPrice * item.Quantity;
+            var qtyCell = item.IsTiered ? $"qty {item.Quantity}" : $"{item.Quantity} x ${item.UnitPrice:F2}";
             rows.Append($@"
                 <tr>
-                    <td style=""padding:8px 0 2px 0;font-size:14px;color:#374151;"">{label}</td>
-                    <td style=""padding:8px 0 2px 0;font-size:14px;color:#374151;text-align:center;"">{(item.Quantity == 1 ? "—" : item.Quantity.ToString())}</td>
-                    <td style=""padding:8px 0 2px 0;font-size:14px;color:#374151;text-align:right;"">${lineTotal:F2}</td>
+                    <td style=""padding:8px 0 2px 0;font-size:14px;color:#374151;font-weight:600;"">{label}</td>
+                    <td style=""padding:8px 0 2px 0;font-size:13px;color:#6b7280;text-align:center;"">{qtyCell}</td>
+                    <td style=""padding:8px 0 2px 0;font-size:14px;color:#374151;font-weight:600;text-align:right;"">${lineTotal:F2}</td>
                 </tr>");
             foreach (var opt in item.Options.Where(o => o.PriceModifier != 0))
             {
                 rows.Append($@"
                 <tr>
-                    <td colspan=""2"" style=""padding:1px 0 6px 12px;font-size:12px;color:#9ca3af;"">+ {WebUtility.HtmlEncode(opt.OptionValue)}</td>
-                    <td style=""padding:1px 0 6px 0;font-size:12px;color:#7c3aed;text-align:right;"">+${opt.PriceModifier:F2}</td>
+                    <td colspan=""2"" style=""padding:1px 0 4px 12px;font-size:12px;color:#9ca3af;"">+ {WebUtility.HtmlEncode(opt.OptionValue)}</td>
+                    <td style=""padding:1px 0 4px 0;font-size:12px;color:#7c3aed;text-align:right;"">+${opt.PriceModifier:F2} each</td>
                 </tr>");
             }
-            // separator row
             rows.Append(@"<tr><td colspan=""3"" style=""padding:0;border-bottom:1px solid #e5e7eb;""></td></tr>");
         }
 
