@@ -1,4 +1,5 @@
 ﻿namespace Elevation.Models;
+
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
@@ -17,6 +18,10 @@ public class User
 
     [Required]
     public string Role { get; set; }
+
+    public bool EmailConfirmed { get; set; } = false;
+
+    public string? EmailConfirmToken { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [JsonIgnore]

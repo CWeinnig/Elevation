@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D & J's Elevated Designs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="https://sandbox.web.squarecdn.com/v1/square.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+    <header>
+        <a class="logo-wrap" href="#">
+            <span class="logo-text">D &amp; J's Elevated Designs</span>
+        </a>
+        <nav>
+            <button class="nav-btn" onclick="openQuotes()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>                My Cart
+                <span class="badge" id="quoteBadge" style="display:none;">0</span>
+            </button>
+
+            <button class="nav-btn" id="authNavBtn" onclick="openSignIn()">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+                Sign In
+            </button>
+            <button class="nav-btn" id="adminNavBtn" onclick="openAdminPanel()" style="display:none;color:rgba(255,215,0,0.95);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                Admin
+            </button>
+            <button class="nav-btn" onclick="toggleTheme()" title="Toggle dark mode">
+                <svg id="themeIcon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" /></svg>
+            </button>
+        </nav>
+    </header>
+
+    <div class="products-wrapper">
+        <div class="products-section">
+            <h2>Our Products</h2>
+            <div style="max-width:400px;margin:0 auto 2rem;">
+                <div style="position:relative;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;"><circle cx="11" cy="11" r="8" /><path stroke-linecap="round" d="M21 21l-4.35-4.35" /></svg>
+                    <input id="productSearch" type="text" placeholder="Search products..." oninput="renderProducts()" style="width:100%;padding:10px 16px 10px 38px;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;outline:none;box-sizing:border-box;" />
+                </div>
+            </div>
+            <div class="products-grid" id="productsGrid">
+                <div style="color:var(--muted);padding:2rem;grid-column:1/-1;">Loading products...</div>
+            </div>
+        </div>
+    </div>
+
+    <footer style="background:linear-gradient(120deg,#7c3aed,#06b6d4);padding:3rem 2rem 1.5rem;margin-top:auto;">
+        <div style="max-width:1100px;margin:0 auto 1.5rem;display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2.5rem;align-items:start;">
+            <div>
+                <p style="font-size:0.88rem;color:rgba(255,255,255,0.8);line-height:1.6;max-width:240px;">Professional printing and design services tailored to your vision.</p>
+            </div>
+            <div>
+                <h4 style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:#fff;margin-bottom:1rem;">Contact Us</h4>
+                <a id="contactEmailLink" style="display:flex;align-items:center;gap:8px;font-size:0.88rem;color:rgba(255,255,255,0.8);text-decoration:none;cursor:pointer;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.8)'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+                    <span id="contactEmailText">digitizeyourideas&#64;gmail.com</span>
+                </a>
+                <script>(function () { var a = document.getElementById('contactEmailLink'); var s = document.getElementById('contactEmailText'); var e = 'digitizeyourideas' + '@' + 'gmail.com'; if (a) a.href = 'mailto:' + e; if (s) s.textContent = e; })();</script>
+            </div>
+            <div>
+                <h4 style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:#fff;margin-bottom:1rem;">Follow Us</h4>
+                <a href="https://www.facebook.com/profile.php?id=61583537794781" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;font-size:0.88rem;color:rgba(255,255,255,0.8);text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.8)'">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" /></svg>
+                    Facebook
+                </a>
+            </div>
+        </div>
+        <div style="max-width:1100px;margin:0 auto;border-top:1px solid rgba(255,255,255,0.2);padding-top:1.25rem;font-size:0.78rem;color:rgba(255,255,255,0.6);display:flex;justify-content:space-between;align-items:center;">
+            <span>&copy; 2026 D &amp; J's Elevated Designs. All rights reserved.</span>
+            <span>Powered by Square Payments</span>
+        </div>
+    </footer>
+
+    <!-- ═══════════════════════════════════════════════════════
+         CART SIDEBAR
+    ════════════════════════════════════════════════════════ -->
+    <div class="overlay" id="quotesOverlay" onclick="closeIfOutside(event)">
+        <div class="quotes-panel" id="quotesPanel">
+            <div class="panel-header">
+                <h2>My Cart</h2>
+                <button class="close-btn" onclick="closeQuotes()">&times;</button>
+            </div>
+            <div id="quotesList"></div>
+            <div class="quote-summary" id="quoteSummary" style="display:none;">
+                <h3>Cart Summary</h3>
+                <div class="summary-row"><span>Total Items:</span><span id="summaryItems">0</span></div>
+                <div class="summary-row bold"><span>Subtotal:</span><span id="summaryTotal" style="color:var(--accent);">$0.00</span></div>
+                <p class="summary-note">* Estimated price. Submit below to finalize.</p>
+                <button class="btn-primary" style="margin-top:1rem;" onclick="openRequestModal()">
+                    <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+                    Proceed to Checkout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         CHECKOUT MODAL
+    ════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="requestModal" onclick="closeModalIfOutside(event)">
+        <div class="modal" id="modalBox">
+            <div class="modal-header">
+                <h2>Checkout</h2>
+                <button class="close-btn" onclick="closeRequestModal()">&times;</button>
+            </div>
+
+            <p class="section-label">Submitted On</p>
+            <p id="submittedTime" style="font-size:0.9rem;margin-bottom:0.5rem;color:var(--muted);"></p>
+
+            <p class="section-label">Contact Information</p>
+            <div class="form-group"><label class="form-label">Name <span>*</span></label><input type="text" id="contactName" placeholder="Your name" /></div>
+            <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="contactEmail" placeholder="you@example.com" /></div>
+            <div class="form-group"><label class="form-label">Phone</label><input type="tel" id="contactPhone" placeholder="(555) 000-0000" /></div>
+
+            <p class="section-label">Order Details</p>
+            <div id="modalOrderDetails"></div>
+
+
+            <div class="form-group">
+                <label class="form-label">Custom Details / Notes</label>
+                <textarea id="customDetails" rows="2" placeholder="Any special instructions, colors, or requests..."></textarea>
+            </div>
+
+            <!-- Design Notes (quote mode only) -->
+            <div id="designNotesSection" style="display:none;">
+                <p class="section-label">Describe Your Design <span style="color:#ef4444;">*</span></p>
+                <div class="design-notes-box">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20" style="color:var(--accent2);flex-shrink:0;margin-top:2px;"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+                    <textarea id="designNotes" rows="4" placeholder="Describe what you'd like — colors, style, text to include, inspiration, etc. The more detail the better! We'll create a proof and send it to you before any payment is required."></textarea>
+                </div>
+                <p style="font-size:0.78rem;color:var(--muted);margin-top:6px;">✓ No payment required until you approve the proof.</p>
+            </div>
+
+            <!-- Payment section (pay-now mode only) -->
+            <div id="paymentSection">
+                <p class="section-label">Payment Information</p>
+                <div id="square-card-container" style="min-height:80px;margin-bottom:1rem;padding:12px;background:rgba(255,255,255,0.08);border-radius:10px;"></div>
+            </div>
+
+            <button class="btn-primary" id="submitOrderBtn" onclick="submitQuote()">
+                <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+                Submit Order
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         PROOF PAYMENT MODAL (returned via payment link)
+    ════════════════════════════════════════════════════════ -->
+    <!-- ═══════════════════════════════════════════════════════
+         PROOF REVIEW MODAL
+    ════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="proofReviewModal">
+        <div class="modal" id="proofReviewBox" style="max-width:520px;">
+            <div class="modal-header">
+                <div>
+                    <h2>Review Your Proof</h2>
+                    <p class="signin-subtitle" id="proofReviewSubtitle">Quote #—</p>
+                </div>
+                <button class="close-btn" onclick="closeProofReviewModal()">&times;</button>
+            </div>
+
+            <!-- Proof file links -->
+            <div id="proofReviewFiles" style="margin-bottom:1.25rem;"></div>
+
+            <!-- Comments box -->
+            <p class="section-label">Comments / Feedback</p>
+            <textarea id="proofReviewComments" rows="4" placeholder="Optional — describe any changes needed or reason for cancellation..." style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.9rem;resize:vertical;margin-bottom:1.25rem;"></textarea>
+
+            <!-- Actions -->
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <button class="btn-primary" onclick="submitProofFeedback('approve')" style="background:linear-gradient(135deg,#10b981,#059669);">
+                    Approve Proof — Proceed to Payment
+                </button>
+                <button class="btn-primary" onclick="submitProofFeedback('revision')" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);">
+                    Request Changes
+                </button>
+                <button class="btn-ghost" onclick="submitProofFeedback('cancel')" style="color:#ef4444;border-color:#ef4444;border:1.5px solid #ef4444;padding:11px;border-radius:8px;background:transparent;font-family:'DM Sans',sans-serif;font-size:0.95rem;font-weight:600;cursor:pointer;">
+                    Cancel This Order
+                </button>
+            </div>
+            <p style="margin-top:1rem;font-size:0.78rem;color:var(--muted);text-align:center;">Approving confirms you are happy with the proof. Requesting changes will notify our team. Cancelling will flag the order for admin review — no charge will be made.</p>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="proofPayModal" onclick="if(event.target===this)closeProofPayModal()">
+        <div class="modal" id="proofPayBox">
+            <div class="modal-header">
+                <div>
+                    <h2>Complete Your Payment</h2>
+                    <p class="signin-subtitle">Your proof has been approved — pay to begin production</p>
+                </div>
+                <button class="close-btn" onclick="closeProofPayModal()">&times;</button>
+            </div>
+            <div class="proof-pay-banner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Proof approved! Completing payment will start production.
+            </div>
+            <p class="section-label">Order For</p>
+            <p style="font-size:0.9rem;margin-bottom:1rem;" id="proofPayEmail">—</p>
+            <p class="section-label">Items</p>
+            <div id="proofPayItems"></div>
+
+            <p class="section-label">Payment Information</p>
+            <div id="proof-pay-card-container" style="min-height:80px;margin-bottom:1rem;padding:12px;background:rgba(255,255,255,0.08);border-radius:10px;"></div>
+            <button class="btn-primary" id="proofPayBtn" onclick="submitProofPayment()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
+                Pay Now
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         SIGN IN MODAL — Unified login (no customer/admin tabs)
+    ════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="signInModal" onclick="closeSignInIfOutside(event)">
+        <div class="modal signin-modal" id="signInBox">
+            <div class="modal-header">
+                <div>
+                    <h2>Sign In</h2>
+                    <p class="signin-subtitle">Access your account and order history</p>
+                </div>
+                <button class="close-btn" onclick="closeSignIn()">&times;</button>
+            </div>
+
+            <!-- Sign In Form -->
+            <div id="signInForm">
+                <div class="form-group"><label class="form-label">Email</label><input type="email" id="signInEmail" placeholder="your@email.com" /></div>
+                <div class="form-group"><label class="form-label">Password</label><input type="password" id="signInPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleSignIn()" /></div>
+                <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleSignIn()">Sign In</button>
+                <p class="signin-switch">Don't have an account? <a href="#" onclick="switchToCreateAccount(); return false;">Create one</a></p>
+            </div>
+
+            <!-- Create Account Form -->
+            <div id="createAccountForm" style="display:none;">
+                <div class="form-group"><label class="form-label">Full Name <span>*</span></label><input type="text" id="createName" placeholder="Your name" /></div>
+                <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="createEmail" placeholder="your@email.com" /></div>
+                <div class="form-group"><label class="form-label">Password <span>*</span></label><input type="password" id="createPassword" placeholder="••••••••" /></div>
+                <button class="btn-primary" style="margin-top:0.5rem;" onclick="handleCreateAccount()">Create Account</button>
+                <p class="signin-switch">Already have an account? <a href="#" onclick="switchToSignIn(); return false;">Sign in</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         ACCOUNT MODAL
+    ════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="accountModal" onclick="closeAccountIfOutside(event)">
+        <div class="modal account-modal" id="accountBox">
+            <div class="modal-header">
+                <div>
+                    <h2>Your Account</h2>
+                    <p class="signin-subtitle">Profile, orders, and proofs</p>
+                </div>
+                <button class="close-btn" onclick="closeAccount()">&times;</button>
+            </div>
+
+            <!-- Profile -->
+            <div style="margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                <div>
+                    <div style="font-size:0.9rem;color:var(--muted);">Signed in as</div>
+                    <div style="font-weight:700;margin-top:0.25rem;" id="accountEmail">—</div>
+                </div>
+                <button class="btn-ghost" onclick="signOut()" style="font-size:0.85rem;padding:6px 10px;border-radius:8px;">Sign out</button>
+            </div>
+
+            <!-- Update account -->
+            <details class="account-details-section">
+                <summary>Update Email or Password</summary>
+                <div style="padding:12px 0 4px;">
+                    <div class="form-group" style="margin-bottom:0.8rem;">
+                        <label class="form-label">Current Password <span>*</span></label>
+                        <input type="password" id="updateCurrentPw" placeholder="••••••••" />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0.8rem;">
+                        <label class="form-label">New Email <span style="color:var(--muted);font-weight:400;">(leave blank to keep)</span></label>
+                        <input type="email" id="updateNewEmail" placeholder="new@email.com" />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0.8rem;">
+                        <label class="form-label">New Password <span style="color:var(--muted);font-weight:400;">(leave blank to keep)</span></label>
+                        <input type="password" id="updateNewPw" placeholder="••••••••" />
+                    </div>
+                    <p id="accountUpdateMsg" style="font-size:0.82rem;margin-bottom:8px;min-height:18px;"></p>
+                    <button onclick="handleUpdateAccount()" style="padding:9px 20px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:0.88rem;font-weight:600;cursor:pointer;">Save Changes</button>
+                </div>
+            </details>
+
+            <h3 style="margin-top:1.25rem;margin-bottom:0.5rem;">Orders &amp; Quotes</h3>
+            <div id="accountOrdersList"><div style="color:var(--muted);padding:1rem;">No orders to show.</div></div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         ADMIN PANEL OVERLAY
+    ════════════════════════════════════════════════════════ -->
+    <div class="overlay" id="adminOverlay" onclick="closeAdminIfOutside(event)">
+        <div class="admin-panel" id="adminPanelBox">
+            <div class="admin-panel-header">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="color:rgba(255,255,255,0.9)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                    <span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#fff;font-weight:700;">Admin Dashboard</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <!-- Tab switcher -->
+                    <div class="admin-tab-bar">
+                        <button class="admin-tab active" id="adminTabProducts" onclick="switchAdminTab('products')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
+                            Products
+                        </button>
+                        <button class="admin-tab" id="adminTabOrders" onclick="switchAdminTab('orders')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /></svg>
+                            Orders
+                        </button>
+                        <button class="admin-tab" id="adminTabFiles" onclick="switchAdminTab('files')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+                            Files
+                        </button>
+                    </div>
+                    <button class="admin-signout-btn" onclick="adminSignOut()">Sign Out</button>
+                    <button class="close-btn" style="color:rgba(255,255,255,0.8);" onclick="closeAdminPanel()">&times;</button>
+                </div>
+            </div>
+
+            <div class="admin-body">
+                <!-- ── PRODUCTS PANE ── -->
+                <div class="admin-products-pane" id="adminProductsPane" style="display:grid;">
+                    <!-- LEFT: list -->
+                    <div class="admin-list-col">
+                        <div class="admin-list-header">
+                            <span style="font-weight:600;font-size:0.95rem;">Products <span class="admin-count-badge" id="adminCountBadge">0</span></span>
+                            <button class="admin-add-btn" onclick="adminStartAdd()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+                                Add Product
+                            </button>
+                        </div>
+                        <div style="padding:10px 12px 0;">
+                            <input id="adminProductSearch" type="text" placeholder="Search products..." oninput="adminRenderList()" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;box-sizing:border-box;" />
+                        </div>
+                        <div class="admin-product-list" id="adminProductList">
+                            <div style="padding:2rem;color:var(--muted);text-align:center;">Loading…</div>
+                        </div>
+                    </div>
+                    <!-- RIGHT: edit form -->
+                    <div class="admin-edit-col">
+                        <div class="admin-placeholder" id="adminPlaceholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="opacity:0.25;margin-bottom:12px;"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
+                            <p style="font-size:0.9rem;color:var(--muted);">Select a product to edit or create a new one</p>
+                        </div>
+                        <form class="admin-edit-form" id="adminEditForm" onsubmit="adminSaveProduct(event)" style="display:none;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+                                <span style="font-size:16px;font-weight:700;" id="adminFormTitle">New Product</span>
+                                <span class="admin-mode-badge new" id="adminModeBadge">NEW</span>
+                            </div>
+                            <input type="hidden" id="adminProductId" />
+                            <div class="admin-field">
+                                <label>Product Name *</label>
+                                <input type="text" id="adminFName" placeholder="e.g. Business Cards – 14pt" required />
+                            </div>
+                            <div class="admin-field">
+                                <label>Description</label>
+                                <textarea id="adminFDesc" rows="2" placeholder="Short product description"></textarea>
+                            </div>
+                            <div class="admin-field">
+                                <label>Base / Starting Price ($) *</label>
+                                <input type="number" id="adminFPrice" step="0.01" min="0" placeholder="0.00" required />
+                                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Shown on product card. If using tiers, set this to the lowest tier price.</div>
+                            </div>
+
+                            <!-- Price Tiers -->
+                            <div class="admin-field">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                    <label style="margin:0;">Price Tiers <span style="font-size:11px;font-weight:400;color:var(--muted);">(qty-based pricing)</span></label>
+                                    <button type="button" onclick="adminAddTierRow()" style="font-size:11px;padding:3px 10px;background:var(--accent2);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;">+ Add Tier</button>
+                                </div>
+                                <div id="adminTiersContainer">
+                                    <div style="font-size:12px;color:var(--muted);font-style:italic;" id="adminTiersEmpty">No tiers — flat base price applies.</div>
+                                </div>
+                                <div id="adminTierHeader" style="display:none;font-size:11px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:4px;padding:0 2px;">
+                                    <span>Min Qty</span><span>Price ($)</span><span></span>
+                                </div>
+                            </div>
+
+                            <!-- Add-On Options -->
+                            <div class="admin-field">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                    <label style="margin:0;">Add-On Options <span style="font-size:11px;font-weight:400;color:var(--muted);">(checkboxes on product page)</span></label>
+                                    <button type="button" onclick="adminAddOptionRow()" style="font-size:11px;padding:3px 10px;background:var(--accent2);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;">+ Add Option</button>
+                                </div>
+                                <div id="adminOptionsContainer">
+                                    <div style="font-size:12px;color:var(--muted);font-style:italic;" id="adminOptionsEmpty">No add-on options.</div>
+                                </div>
+                            </div>
+
+                            <div style="display:flex;gap:10px;margin-top:8px;">
+                                <button type="button" class="admin-cancel-btn" onclick="adminCancelEdit()">Cancel</button>
+                                <button type="submit" class="admin-save-btn" id="adminSaveBtn">Save Product</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- ── ORDERS PANE ── -->
+                <div class="admin-orders-pane" id="adminOrdersPane" style="display:none;flex-direction:column;">
+                    <!-- Rendered dynamically by adminRenderOrders() -->
+                </div>
+
+                <!-- ── FILES PANE ── -->
+                <div id="adminFilesPane" style="display:none;padding:24px;overflow-y:auto;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                        <div style="font-size:16px;font-weight:700;">File Archive</div>
+                        <div style="font-size:13px;color:var(--muted);">All uploaded customer &amp; proof files</div>
+                    </div>
+                    <div id="adminFilesList">
+                        <div style="padding:2rem;color:var(--muted);text-align:center;">Loading files...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Delete Confirm -->
+    <div class="modal-overlay" id="adminDeleteModal" onclick="if(event.target===this)adminCloseDeleteModal()" style="z-index:600;">
+        <div class="modal" style="max-width:360px;text-align:center;">
+            <div style="width:52px;height:52px;border-radius:50%;background:rgba(239,68,68,0.1);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </div>
+            <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;">Delete Product?</h3>
+            <p id="adminDeleteMsg" style="font-size:14px;color:var(--muted);margin-bottom:24px;line-height:1.5;">This cannot be undone.</p>
+            <div style="display:flex;gap:10px;justify-content:center;">
+                <button class="btn-ghost" onclick="adminCloseDeleteModal()" style="padding:10px 24px;border-radius:8px;">Cancel</button>
+                <button onclick="adminConfirmDelete()" style="padding:10px 24px;background:#ef4444;color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         PRODUCT DETAIL MODAL
+    ════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="productDetailModal" onclick="closeProductDetailIfOutside(event)" style="z-index:350;">
+        <div class="modal pd-modal">
+            <div class="pd-header">
+                <div class="pd-header-info">
+                    <div class="pd-name" id="pdName">Product Name</div>
+                    <div class="pd-price-tag" id="pdPrice">$0.00 per unit</div>
+                </div>
+                <button class="close-btn" style="color:rgba(255,255,255,0.8);flex-shrink:0;margin-top:2px;" onclick="closeProductDetail();event.stopPropagation();">&times;</button>
+            </div>
+            <div class="pd-body">
+                <div class="pd-desc" id="pdDesc"></div>
+
+                <!-- Price table or flat price — rendered by JS -->
+                <div id="pdPriceSection" style="margin-bottom:16px;"></div>
+
+                <!-- Qty: dropdown (tiers) or stepper (flat) — rendered by JS -->
+                <div id="pdQtySection" style="margin-bottom:16px;">
+                    <!-- populated by openProductDetail -->
+                </div>
+
+                <!-- Est. total always visible -->
+                <div class="pd-est-total" style="margin-bottom:16px;">Est. total: <strong id="pdEstTotal">$0.00</strong></div>
+
+                <!-- Add-on options — shown only when product has options -->
+                <div id="pdOptionsSection" style="display:none;margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:10px;"></div>
+
+                <div class="pd-section-label" style="margin-bottom:10px;">How would you like to proceed?</div>
+                <div class="pd-mode-grid">
+                    <button class="pd-mode-card active" id="pdModeQuote" onclick="pdSetMode('quote')">
+                        <div class="pd-mode-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
+                        </div>
+                        <div class="pd-mode-title">Custom Design Request</div>
+                        <div class="pd-mode-sub">Tell us your vision — we'll create it and send you a quote</div>
+                    </button>
+                    <button class="pd-mode-card" id="pdModeUpload" onclick="pdSetMode('upload')">
+                        <div class="pd-mode-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                        </div>
+                        <div class="pd-mode-title">Upload My Design</div>
+                        <div class="pd-mode-sub">Have files ready? Upload and add directly to cart</div>
+                    </button>
+                </div>
+                <!-- Quote section -->
+                <div id="pdQuoteSection" class="pd-panel">
+                    <div class="pd-section-label" style="margin-bottom:10px;">Your Contact Info</div>
+                    <div class="form-group" style="margin-bottom:0.9rem;">
+                        <label class="form-label">Name <span style="color:#ef4444">*</span></label>
+                        <input type="text" id="pdQuoteName" placeholder="Your name" />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0.9rem;">
+                        <label class="form-label">Email <span style="color:#ef4444">*</span></label>
+                        <input type="email" id="pdQuoteEmail" placeholder="you@example.com" />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0.9rem;">
+                        <label class="form-label">Phone <span style="font-size:0.78rem;font-weight:400;color:var(--muted);">(optional)</span></label>
+                        <input type="tel" id="pdQuotePhone" placeholder="(555) 000-0000" />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Describe Your Design</label>
+                        <textarea id="pdQuoteNotes" rows="3" placeholder="Colors, text, imagery, dimensions, any details about your idea…"></textarea>
+                    </div>
+                    <button class="pd-quote-btn" id="pdQuoteBtn" onclick="pdSubmitQuote()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+                        Request Quote
+                    </button>
+                </div>
+                <!-- Upload section -->
+                <div id="pdUploadSection" class="pd-panel" style="display:none;">
+                    <div class="pd-section-label" style="margin-bottom:10px;">Your Design File</div>
+                    <div class="pd-dropzone" id="pdDropzone">
+                        <label class="pd-dropzone-label" for="pdFileInput">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32" style="color:var(--accent2)"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                            <span class="pd-dropzone-text">Click to upload or drag &amp; drop</span>
+                            <span class="pd-dropzone-hint">PNG, JPG, PDF, AI, EPS — any format</span>
+                            <input type="file" id="pdFileInput" accept="image/*,application/pdf,.ai,.eps,.svg" style="display:none" onchange="pdHandleFileInput(this)" />
+                        </label>
+                    </div>
+                    <button class="pd-cart-btn" id="pdAddCartBtn" onclick="pdAddToCart()" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
+                        Add to Cart
+                    </button>
+                    <p style="font-size:0.76rem;color:var(--muted);margin-top:8px;text-align:center;">Upload your file above to enable Add to Cart</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         QUOTE SUCCESS MODAL
+    ════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="quoteSuccessModal" onclick="if(event.target===this)closeQuoteSuccess()" style="z-index:400;">
+        <div class="modal" style="max-width:400px;text-align:center;">
+            <div class="quote-success-icon">
+                <svg class="quote-success-checkmark" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+            </div>
+            <h3 style="font-family:'Playfair Display',serif;font-size:1.35rem;margin-bottom:10px;">Quote Request Sent!</h3>
+            <p style="font-size:0.9rem;color:var(--muted);line-height:1.6;margin-bottom:0.5rem;">
+                Thanks, <strong id="quoteSuccessName" style="color:var(--text)"></strong>! We received your request for
+            </p>
+            <p style="font-size:0.92rem;font-weight:700;color:var(--accent2);margin-bottom:1.25rem;" id="quoteSuccessProduct"></p>
+            <p style="font-size:0.88rem;color:var(--muted);line-height:1.6;margin-bottom:1.5rem;">
+                We'll review your details and send a custom quote to your email shortly. Keep an eye on your inbox!
+            </p>
+            <button class="btn-primary" style="margin-top:0;" onclick="closeQuoteSuccess()">Done</button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         QUOTES HISTORY PANEL
+    ════════════════════════════════════════════════════════ -->
+    <div class="overlay" id="quotesHistoryOverlay" onclick="closeQuotesHistoryIfOutside(event)">
+        <div class="quotes-panel" id="quotesHistoryPanel">
+            <div class="panel-header">
+                <div>
+                    <h2>My Quotes</h2>
+                    <p style="font-size:0.8rem;color:var(--muted);margin-top:3px;">Your submitted design requests</p>
+                </div>
+                <button class="close-btn" onclick="closeQuotesHistory()">&times;</button>
+            </div>
+            <div id="quotesHistoryList"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <script src="app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => { pdSetupDropzoneEvents(); });
+    </script>
+</body>
+</html>
