@@ -123,6 +123,17 @@ public class OrdersController : ControllerBase
             });
         }
 
+        // 3b. Resolve shipping cost
+        // Currently uses a flat rate from config. To switch to calculated rates in the future,
+        // replace this block with a carrier API call using dto.ShipTo* fields — nothing else changes.
+        decimal shippingCost = 0m;
+        bool hasShippingAddress = !string.IsNullOrWhiteSpace(dto.ShipToStreet);
+        if (hasShippingAddress)
+        {
+            shippingCost = _config.GetValue<decimal>("Shipping:FlatRateCost", 8.99m);
+            totalPrice += shippingCost;
+        }
+
         // 4. Write to DB
         var initialStatus = dto.IsQuoteRequest ? "QuoteRequested" : "Paid";
 
@@ -137,6 +148,12 @@ public class OrdersController : ControllerBase
             IsQuoteRequest = dto.IsQuoteRequest,
             PaymentToken = dto.IsQuoteRequest ? Guid.NewGuid().ToString("N") : string.Empty,
             CreatedAt = DateTime.UtcNow,
+            ShipToName = dto.ShipToName,
+            ShipToStreet = dto.ShipToStreet,
+            ShipToCity = dto.ShipToCity,
+            ShipToState = dto.ShipToState,
+            ShipToZip = dto.ShipToZip,
+            ShippingCost = shippingCost,
             Items = orderItems,
             Notifications = new List<Notification>(),
             UploadedFiles = new List<UploadedFile>()
@@ -165,7 +182,6 @@ public class OrdersController : ControllerBase
         {
             var prod = _context.Products.Include(p => p.PriceTiers).FirstOrDefault(p => p.Id == i.ProductId);
             bool tiered = prod?.PriceTiers != null && prod.PriceTiers.Any();
-            // Main product line
             emailItems.Add(new EmailLineItem
             {
                 DisplayName = prod?.Name ?? "Product",
@@ -183,7 +199,7 @@ public class OrdersController : ControllerBase
         if (dto.IsQuoteRequest)
             await _email.SendQuoteReceivedAsync(recipientEmail, order.Id, totalPrice, emailItems, dto.DesignNotes ?? "");
         else
-            await _email.SendOrderConfirmedAsync(recipientEmail, order.Id, totalPrice, emailItems);
+            await _email.SendOrderConfirmedAsync(recipientEmail, order.Id, totalPrice, emailItems, shippingCost);
 
         var created = await GetOrderWithIncludes(order.Id);
         return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, MapToDto(created!));
@@ -276,7 +292,6 @@ public class OrdersController : ControllerBase
 
             else if (dto.NewStatus == "ProofSent")
             {
-                // Build a direct proof download URL from the most recent proof file
                 var proofFile = order.UploadedFiles?
                     .Where(f => f.OriginalFileName.StartsWith("PROOF_"))
                     .OrderByDescending(f => f.UploadedAt)
@@ -343,7 +358,6 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // Send proof-ready email with direct download link
         if (!string.IsNullOrEmpty(recipient))
         {
             var proofUrl = Url.Action("DownloadFile", "Files", new { id = proofFile.Id }, Request.Scheme)
@@ -461,6 +475,7 @@ public class OrdersController : ControllerBase
         {
             orderId = order.Id,
             totalPrice = order.TotalPrice,
+            shippingCost = _config.GetValue<decimal>("Shipping:FlatRateCost", 8.99m),
             email = string.IsNullOrEmpty(order.GuestEmail)
                     ? (await _context.Users.FindAsync(order.UserId))?.Email ?? string.Empty
                     : order.GuestEmail,
@@ -494,6 +509,21 @@ public class OrdersController : ControllerBase
         order.Status = "Paid";
         order.PaymentToken = string.Empty;
 
+        // Save shipping address collected at payment time
+        order.ShipToName = dto.ShipToName;
+        order.ShipToStreet = dto.ShipToStreet;
+        order.ShipToCity = dto.ShipToCity;
+        order.ShipToState = dto.ShipToState;
+        order.ShipToZip = dto.ShipToZip;
+
+        // Apply flat shipping cost now that we have an address
+        if (!string.IsNullOrWhiteSpace(dto.ShipToStreet) && order.ShippingCost == 0m)
+        {
+            var flatRate = _config.GetValue<decimal>("Shipping:FlatRateCost", 8.99m);
+            order.ShippingCost = flatRate;
+            order.TotalPrice += flatRate;
+        }
+
         var recipient = await ResolveRecipient(order);
         if (!string.IsNullOrEmpty(recipient))
         {
@@ -523,7 +553,7 @@ public class OrdersController : ControllerBase
                         .ToList()
                 }).ToList() ?? new();
 
-            await _email.SendOrderConfirmedAsync(recipient, order.Id, order.TotalPrice, items);
+            await _email.SendOrderConfirmedAsync(recipient, order.Id, order.TotalPrice, items, order.ShippingCost);
         }
 
         return Ok(new { message = "Payment recorded", currentStatus = order.Status });
@@ -543,7 +573,6 @@ public class OrdersController : ControllerBase
         if (order.Status != "ProofSent")
             return BadRequest($"Cannot review proof — current status is '{order.Status}'.");
 
-        // Validate identity — either token (email link) or userId (logged-in)
         bool authenticated = false;
         if (!string.IsNullOrEmpty(dto.Token))
             authenticated = order.PaymentToken == dto.Token;
@@ -619,6 +648,45 @@ public class OrdersController : ControllerBase
         return Redirect(paymentUrl);
     }
 
+    // ── Mark order as shipped (admin) ─────────────────────────────────────────
+
+    [HttpPost("{id}/ship")]
+    public async Task<IActionResult> ShipOrder(int id, [FromBody] ShipOrderDto dto)
+    {
+        var order = await _context.Orders.FindAsync(id);
+        if (order == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(dto.ShippingCarrier))
+            return BadRequest("Shipping carrier is required.");
+        if (string.IsNullOrWhiteSpace(dto.TrackingNumber))
+            return BadRequest("Tracking number is required.");
+
+        order.ShippingCarrier = dto.ShippingCarrier;
+        order.TrackingNumber = dto.TrackingNumber;
+        order.EstimatedDelivery = dto.EstimatedDelivery;
+        order.Status = "Shipped";
+
+        var recipient = await ResolveRecipient(order);
+        if (!string.IsNullOrEmpty(recipient))
+        {
+            _context.Notifications.Add(new Notification
+            {
+                OrderId = order.Id,
+                Type = "Email - Order Shipped",
+                Recipient = recipient,
+                SentAt = DateTime.UtcNow
+            });
+        }
+
+        await _context.SaveChangesAsync();
+
+        if (!string.IsNullOrEmpty(recipient))
+            await _email.SendOrderShippedAsync(recipient, order.Id, dto.ShippingCarrier,
+                dto.TrackingNumber, dto.EstimatedDelivery);
+
+        return Ok(new { message = "Order marked as shipped", currentStatus = order.Status });
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<Order?> GetOrderWithIncludes(int id) =>
@@ -655,6 +723,15 @@ public class OrdersController : ControllerBase
         CustomerEmail = order.User?.Email ?? order.GuestEmail,
         CustomerPhone = order.CustomerPhone ?? string.Empty,
         PaymentToken = order.Status == "AwaitingPayment" ? order.PaymentToken : string.Empty,
+        ShipToName = order.ShipToName,
+        ShipToStreet = order.ShipToStreet,
+        ShipToCity = order.ShipToCity,
+        ShipToState = order.ShipToState,
+        ShipToZip = order.ShipToZip,
+        ShippingCost = order.ShippingCost,
+        ShippingCarrier = order.ShippingCarrier,
+        TrackingNumber = order.TrackingNumber,
+        EstimatedDelivery = order.EstimatedDelivery,
         Items = order.Items?.Select(i => new OrderItemDto
         {
             Id = i.Id,
@@ -684,10 +761,19 @@ public class OrdersController : ControllerBase
 public class ApproveProofDto { public string PaymentToken { get; set; } = string.Empty; }
 public class ProofFeedbackDto
 {
-    public string Action { get; set; } = string.Empty; // "approve" | "revision" | "cancel"
+    public string Action { get; set; } = string.Empty; 
     public string? Comments { get; set; }
-    public string? Token { get; set; }   // for email-link flow (no login)
-    public int? UserId { get; set; }      // for logged-in flow
+    public string? Token { get; set; }  
+    public int? UserId { get; set; }     
 }
 public class CustomerApproveDto { public int UserId { get; set; } }
-public class CompletePaymentDto { public string PaymentToken { get; set; } = string.Empty; public string SquarePaymentId { get; set; } = string.Empty; }
+public class CompletePaymentDto
+{
+    public string PaymentToken { get; set; } = string.Empty;
+    public string SquarePaymentId { get; set; } = string.Empty;
+    public string ShipToName { get; set; } = string.Empty;
+    public string ShipToStreet { get; set; } = string.Empty;
+    public string ShipToCity { get; set; } = string.Empty;
+    public string ShipToState { get; set; } = string.Empty;
+    public string ShipToZip { get; set; } = string.Empty;
+}

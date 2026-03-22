@@ -109,17 +109,22 @@
                 <button class="close-btn" onclick="closeRequestModal()">&times;</button>
             </div>
 
-            <p class="section-label">Submitted On</p>
-            <p id="submittedTime" style="font-size:0.9rem;margin-bottom:0.5rem;color:var(--muted);"></p>
+            <p class="section-label">Order Details</p>
+            <div id="modalOrderDetails"></div>
 
             <p class="section-label">Contact Information</p>
             <div class="form-group"><label class="form-label">Name <span>*</span></label><input type="text" id="contactName" placeholder="Your name" /></div>
             <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="contactEmail" placeholder="you@example.com" /></div>
             <div class="form-group"><label class="form-label">Phone</label><input type="tel" id="contactPhone" placeholder="(555) 000-0000" /></div>
 
-            <p class="section-label">Order Details</p>
-            <div id="modalOrderDetails"></div>
-
+            <p class="section-label">Shipping Address</p>
+            <div class="form-group"><label class="form-label">Full Name <span>*</span></label><input type="text" id="shipName" placeholder="Name on package" /></div>
+            <div class="form-group"><label class="form-label">Street Address <span>*</span></label><input type="text" id="shipStreet" placeholder="123 Main St" /></div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
+                <div class="form-group"><label class="form-label">City <span>*</span></label><input type="text" id="shipCity" placeholder="City" /></div>
+                <div class="form-group"><label class="form-label">State <span>*</span></label><input type="text" id="shipState" placeholder="LA" maxlength="2" style="text-transform:uppercase;" /></div>
+                <div class="form-group"><label class="form-label">ZIP <span>*</span></label><input type="text" id="shipZip" placeholder="70458" maxlength="10" /></div>
+            </div>
 
             <div class="form-group">
                 <label class="form-label">Custom Details / Notes</label>
@@ -205,6 +210,15 @@
             <p style="font-size:0.9rem;margin-bottom:1rem;" id="proofPayEmail">—</p>
             <p class="section-label">Items</p>
             <div id="proofPayItems"></div>
+
+            <p class="section-label">Shipping Address</p>
+            <div class="form-group"><label class="form-label">Full Name <span>*</span></label><input type="text" id="proofShipName" placeholder="Name on package" /></div>
+            <div class="form-group"><label class="form-label">Street Address <span>*</span></label><input type="text" id="proofShipStreet" placeholder="123 Main St" /></div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
+                <div class="form-group"><label class="form-label">City <span>*</span></label><input type="text" id="proofShipCity" placeholder="City" /></div>
+                <div class="form-group"><label class="form-label">State <span>*</span></label><input type="text" id="proofShipState" placeholder="LA" maxlength="2" style="text-transform:uppercase;" /></div>
+                <div class="form-group"><label class="form-label">ZIP <span>*</span></label><input type="text" id="proofShipZip" placeholder="70458" maxlength="10" /></div>
+            </div>
 
             <p class="section-label">Payment Information</p>
             <div id="proof-pay-card-container" style="min-height:80px;margin-bottom:1rem;padding:12px;background:rgba(255,255,255,0.08);border-radius:10px;"></div>

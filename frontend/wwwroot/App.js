@@ -2,6 +2,9 @@ const API_BASE = 'http://localhost:5249';
 const SQUARE_APP_ID = 'sandbox-sq0idb-BwePK0oD1PR0SnDJLs3w5g';
 const SQUARE_LOCATION_ID = 'L77QZ2Q33YZSD';
 
+// Flat shipping rate — must match Shipping:FlatRateCost in appsettings.json
+const FLAT_SHIPPING_RATE = 8.99;
+
 let products = [];
 let cart = [];
 let currentUser = null;   // { id, name, email, role, createdAt }
@@ -78,6 +81,7 @@ function getStatusColor(status) {
         'RevisionRequested': { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b' },
         'CancellationRequested': { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
         'Pending': { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' },
+        'Shipped': { bg: 'rgba(16,185,129,0.12)', text: '#059669' },
     };
     return map[status] || { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' };
 }
@@ -94,6 +98,7 @@ function formatStatus(status) {
         'RevisionRequested': 'Revision Requested',
         'CancellationRequested': 'Cancellation Requested',
         'Pending': 'Pending',
+        'Shipped': 'Shipped',
     };
     return map[status] || status;
 }
@@ -330,6 +335,7 @@ async function pdSubmitQuote() {
     const email = document.getElementById('pdQuoteEmail').value.trim();
     const phone = document.getElementById('pdQuotePhone')?.value.trim() || '';
     const notes = document.getElementById('pdQuoteNotes').value.trim();
+
     if (!name) { showToast('Please enter your name.'); return; }
     if (!email) { showToast('Please enter your email.'); return; }
     if (!notes) { showToast('Please describe your design — this helps us prepare your quote.'); return; }
@@ -559,7 +565,17 @@ function pdAddToCart() {
 
 function addToCart(item) {
     const existing = cart.find(i => i.productId === item.productId);
-    if (existing) { existing.qty += item.qty; } else { cart.push({ ...item }); }
+    if (existing) {
+        existing.qty += item.qty;
+        // Update the file if a new one was provided
+        if (item.imageData) {
+            existing.imageData = item.imageData;
+            existing.imageName = item.imageName;
+            existing.imageFile = item.imageFile;
+        }
+    } else {
+        cart.push({ ...item });
+    }
     saveCart();
     updateBadge();
     showToast(`"${item.name}" added to cart!`);
@@ -649,8 +665,11 @@ function closeIfOutside(e) { }
 async function openRequestModal() {
     if (cart.length === 0) { showToast('Add items to your cart first.'); return; }
     closeQuotes();
-    document.getElementById('submittedTime').textContent = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
-    if (currentUser) { document.getElementById('contactName').value = currentUser.name; document.getElementById('contactEmail').value = currentUser.email; }
+    if (currentUser) {
+        document.getElementById('contactName').value = currentUser.name;
+        document.getElementById('contactEmail').value = currentUser.email;
+        document.getElementById('shipName').value = currentUser.name;
+    }
 
     renderModalOrderDetails();
     document.getElementById('requestModal').classList.add('show');
@@ -666,14 +685,29 @@ function updateCheckoutMode() {
 }
 
 function renderModalOrderDetails() {
+    const subtotal = getCartSubtotal();
+    const grandTotal = subtotal + FLAT_SHIPPING_RATE;
     document.getElementById('modalOrderDetails').innerHTML = cart.map(item => {
         const addonTotal = item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
-        const baseLineTotal = item.basePrice * item.qty;
         const optLines = item.selectedOptions.filter(o => o.priceModifier).map(o =>
             `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)} each</span></div>`
         ).join('');
-        return `<div class="order-detail-card"><div><div style="font-weight:700;">${item.name}</div><div class="order-detail-qty">${item.qty} × $${item.basePrice.toFixed(2)}</div>${optLines}</div></div>`;
-    }).join('') + `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:12px 4px 4px;border-top:1px solid var(--border);margin-top:8px;"><span>Total</span><span style="color:var(--accent);">$${getCartSubtotal().toFixed(2)}</span></div>`;
+        const isImage = item.imageData && item.imageData.startsWith('data:image');
+        const fileIndicator = item.imageData
+            ? (isImage
+                ? `<img src="${item.imageData}" alt="Design file" style="margin-top:8px;width:100%;max-height:120px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:var(--bg);" />`
+                : `<div style="margin-top:8px;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 10px;">📎 ${escHtml(item.imageName || 'Design file')}</div>`)
+            : '';
+        return `<div class="order-detail-card" style="flex-direction:column;align-items:stretch;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div><div style="font-weight:700;">${item.name}</div><div class="order-detail-qty">${item.qty} × $${item.basePrice.toFixed(2)}</div>${optLines}</div>
+            </div>
+            ${fileIndicator}
+        </div>`;
+    }).join('') +
+        `<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 4px 2px;color:var(--muted);"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>` +
+        `<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 4px;color:var(--muted);"><span>Shipping</span><span>$${FLAT_SHIPPING_RATE.toFixed(2)}</span></div>` +
+        `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:8px 4px 4px;border-top:1px solid var(--border);margin-top:6px;"><span>Total</span><span style="color:var(--accent);">$${grandTotal.toFixed(2)}</span></div>`;
 }
 
 function closeRequestModal() {
@@ -700,9 +734,19 @@ async function submitQuote() {
     const phone = document.getElementById('contactPhone')?.value.trim() || '';
     const isQuote = false;
     const designNotes = (document.getElementById('customDetails')?.value.trim() || document.getElementById('designNotes')?.value.trim() || '');
+    const shipName = document.getElementById('shipName').value.trim();
+    const shipStreet = document.getElementById('shipStreet').value.trim();
+    const shipCity = document.getElementById('shipCity').value.trim();
+    const shipState = document.getElementById('shipState').value.trim();
+    const shipZip = document.getElementById('shipZip').value.trim();
 
     if (!name) { showToast('Please enter your name.'); return; }
     if (!email) { showToast('Please enter your email.'); return; }
+    if (!shipName) { showToast('Please enter a name for the shipping address.'); return; }
+    if (!shipStreet) { showToast('Please enter a street address.'); return; }
+    if (!shipCity) { showToast('Please enter a city.'); return; }
+    if (!shipState) { showToast('Please enter a state.'); return; }
+    if (!shipZip) { showToast('Please enter a ZIP code.'); return; }
     if (isQuote && !designNotes) { showToast('Please describe your design needs.'); return; }
     if (!isQuote && !squareCard) { showToast('Payment form not ready.'); return; }
 
@@ -727,9 +771,10 @@ async function submitQuote() {
                 showToast(`Payment error: ${tokenResult.errors?.map(e => e.message).join(', ') || 'Card error.'}`);
                 return;
             }
+            const grandTotal = getCartSubtotal() + FLAT_SHIPPING_RATE;
             const payRes = await fetch(`${API_BASE}/api/Payments/process`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sourceId: tokenResult.token, amountCents: Math.round(getCartSubtotal() * 100) })
+                body: JSON.stringify({ sourceId: tokenResult.token, amountCents: Math.round(grandTotal * 100) })
             });
             if (!payRes.ok) { const e = await payRes.json(); showToast(`Payment failed: ${e.errors?.[0] || 'Unknown'}`); return; }
             const payment = await payRes.json();
@@ -745,6 +790,11 @@ async function submitQuote() {
                 isQuoteRequest: isQuote,
                 designNotes: designNotes,
                 customerPhone: phone,
+                shipToName: shipName,
+                shipToStreet: shipStreet,
+                shipToCity: shipCity,
+                shipToState: shipState,
+                shipToZip: shipZip,
                 fileIds,
                 items: cart.map(item => ({
                     productId: item.productId,
@@ -816,8 +866,8 @@ async function checkPaymentReturn() {
 
 function openProofPaymentModal(info) {
     document.getElementById('proofPayEmail').textContent = info.email;
-    // proofPayTotal removed from HTML
     const itemsEl = document.getElementById('proofPayItems');
+    const shippingCost = Number(info.shippingCost || 0);
     itemsEl.innerHTML = (info.items || []).map(i => {
         const addonTotal = (i.options || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
         const baseLineTotal = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
@@ -832,9 +882,15 @@ function openProofPaymentModal(info) {
                 ${optionLines}
             </div>
         </div>`;
-    }).join('') + `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:12px 4px 4px;border-top:1px solid var(--border);margin-top:8px;"><span>Total</span><span style="color:var(--accent);">$${Number(info.totalPrice).toFixed(2)}</span></div>`;
+    }).join('') +
+        (shippingCost > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 4px 2px;color:var(--muted);"><span>Shipping</span><span>$${shippingCost.toFixed(2)}</span></div>` : '') +
+        `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:8px 4px 4px;border-top:1px solid var(--border);margin-top:6px;"><span>Total</span><span style="color:var(--accent);">$${Number(info.totalPrice).toFixed(2)}</span></div>`;
     document.getElementById('proofPayModal').classList.add('show');
     document.body.style.overflow = 'hidden';
+    // Clear shipping fields
+    ['proofShipName', 'proofShipStreet', 'proofShipCity', 'proofShipState', 'proofShipZip'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
     initProofPaySquare();
 }
 
@@ -871,6 +927,19 @@ function closeProofPayModal() {
 
 async function submitProofPayment() {
     if (!window._proofPayCard) { showToast('Payment form not ready.'); return; }
+
+    const shipName = document.getElementById('proofShipName').value.trim();
+    const shipStreet = document.getElementById('proofShipStreet').value.trim();
+    const shipCity = document.getElementById('proofShipCity').value.trim();
+    const shipState = document.getElementById('proofShipState').value.trim();
+    const shipZip = document.getElementById('proofShipZip').value.trim();
+
+    if (!shipName) { showToast('Please enter a name for the shipping address.'); return; }
+    if (!shipStreet) { showToast('Please enter a street address.'); return; }
+    if (!shipCity) { showToast('Please enter a city.'); return; }
+    if (!shipState) { showToast('Please enter a state.'); return; }
+    if (!shipZip) { showToast('Please enter a ZIP code.'); return; }
+
     const btn = document.getElementById('proofPayBtn');
     btn.disabled = true; btn.textContent = 'Processing...';
     try {
@@ -889,7 +958,15 @@ async function submitProofPayment() {
 
         const completeRes = await fetch(`${API_BASE}/api/Orders/${pendingPayOrderId}/complete-payment`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentToken: pendingPayToken, squarePaymentId: payment.paymentId })
+            body: JSON.stringify({
+                paymentToken: pendingPayToken,
+                squarePaymentId: payment.paymentId,
+                shipToName: shipName,
+                shipToStreet: shipStreet,
+                shipToCity: shipCity,
+                shipToState: shipState,
+                shipToZip: shipZip
+            })
         });
         if (!completeRes.ok) { showToast('Could not record payment. Please contact us.'); return; }
 
@@ -1111,6 +1188,19 @@ function renderAccountOrders(orders) {
                 ${o.status === 'ProofSent' ? `<button onclick="openProofReviewModal(${o.id}, null)" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Review Proof</button>` : ''}
                 ${o.status === 'AwaitingPayment' ? `<button onclick="reopenPaymentModal(${o.id}, '${o.paymentToken}')" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Complete Payment</button>` : ''}
             </div>` : '';
+
+        const trackingSection = o.trackingNumber ? (() => {
+            const trackingUrl = (o.shippingCarrier || '').toLowerCase().includes('fedex')
+                ? `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(o.trackingNumber)}`
+                : `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(o.trackingNumber)}`;
+            return `
+            <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);">
+                <div style="font-size:0.78rem;font-weight:700;color:#059669;margin-bottom:4px;">📦 Shipped via ${escHtml(o.shippingCarrier)}</div>
+                <a href="${trackingUrl}" target="_blank" rel="noopener" style="font-size:0.85rem;color:var(--accent2);font-weight:600;">Track: ${escHtml(o.trackingNumber)}</a>
+                ${o.estimatedDelivery ? `<div style="font-size:0.78rem;color:var(--muted);margin-top:3px;">Est. delivery: ${new Date(o.estimatedDelivery).toLocaleDateString()}</div>` : ''}
+            </div>`;
+        })() : '';
+
         return `
         <div class="order-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
@@ -1132,7 +1222,9 @@ function renderAccountOrders(orders) {
             return `<div style="margin-bottom:6px;"><div>${it.quantity}x ${escHtml(it.productName)} <span style="color:var(--muted);">— $${baseLineTotal.toFixed(2)}</span></div>${optionLines}</div>`;
         }).join('')}</div>
             ${o.designNotes ? `<div style="margin-top:6px;font-size:0.8rem;color:var(--muted);font-style:italic;">Notes: ${escHtml(o.designNotes)}</div>` : ''}
+            ${o.shipToStreet ? `<div style="margin-top:4px;font-size:0.8rem;color:var(--muted);">Ship to: ${escHtml(o.shipToName)}, ${escHtml(o.shipToStreet)}, ${escHtml(o.shipToCity)}, ${escHtml(o.shipToState)} ${escHtml(o.shipToZip)}</div>` : ''}
             ${proofSection}
+            ${trackingSection}
         </div>`;
     }).join('');
 }
@@ -1615,8 +1707,42 @@ async function adminSelectOrder(id) {
     const designFiles = (order.uploadedFiles || []).filter(f => !f.originalFileName?.startsWith('PROOF_'));
 
     const statusOptions = order.isQuoteRequest
-        ? ['QuoteRequested', 'ProofSent', 'RevisionRequested', 'CancellationRequested', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Completed', 'Cancelled']
-        : ['Paid', 'Completed', 'Cancelled'];
+        ? ['QuoteRequested', 'ProofSent', 'RevisionRequested', 'CancellationRequested', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Shipped', 'Completed', 'Cancelled']
+        : ['Paid', 'Shipped', 'Completed', 'Cancelled'];
+
+    const shippingSection = `
+        <div class="admin-detail-section">
+            <div class="admin-detail-label">Shipping</div>
+            ${order.shipToStreet ? `
+                <div style="font-size:13px;line-height:1.7;margin-bottom:6px;">
+                    ${escHtml(order.shipToName)}<br>
+                    ${escHtml(order.shipToStreet)}<br>
+                    ${escHtml(order.shipToCity)}, ${escHtml(order.shipToState)} ${escHtml(order.shipToZip)}
+                </div>
+                ${order.shippingCost > 0 ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Shipping charged: $${Number(order.shippingCost).toFixed(2)}</div>` : ''}
+            ` : '<div style="font-size:13px;color:var(--muted);margin-bottom:8px;">No shipping address on file.</div>'}
+            ${order.trackingNumber ? `
+                <div style="padding:8px 10px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);">
+                    <div style="font-size:11px;font-weight:700;color:#059669;margin-bottom:4px;">SHIPPED</div>
+                    <div style="font-size:13px;">${escHtml(order.shippingCarrier)} — ${escHtml(order.trackingNumber)}</div>
+                    ${order.estimatedDelivery ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">Est. delivery: ${new Date(order.estimatedDelivery).toLocaleDateString()}</div>` : ''}
+                </div>
+            ` : (order.shipToStreet && ['Paid', 'Completed'].includes(order.status) ? `
+                <div>
+                    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Mark as Shipped</div>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                        <select id="shipCarrier-${order.id}" style="padding:7px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;">
+                            <option value="">Select carrier…</option>
+                            <option value="USPS">USPS</option>
+                            <option value="FedEx">FedEx</option>
+                        </select>
+                        <input type="text" id="shipTracking-${order.id}" placeholder="Tracking number" style="padding:7px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
+                        <input type="date" id="shipEta-${order.id}" title="Estimated delivery (optional)" style="padding:7px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
+                        <button onclick="adminMarkShipped(${order.id})" style="padding:8px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Mark as Shipped</button>
+                    </div>
+                </div>
+            ` : '')}
+        </div>`;
 
     document.getElementById('adminOrderDetail').innerHTML = `
         <div style="padding:24px;overflow-y:auto;flex:1;">
@@ -1687,6 +1813,8 @@ async function adminSelectOrder(id) {
                 ${proofFiles.map(f => `<a href="${API_BASE}/api/Files/${f.id}/download" download="${f.originalFileName.replace('PROOF_', '')}" style="display:block;font-size:13px;color:var(--accent);margin-bottom:4px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
             </div>` : ''}
 
+            ${shippingSection}
+
             ${order.isQuoteRequest && ['QuoteRequested', 'ProofSent', 'RevisionRequested'].includes(order.status) ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Upload Proof</div>
@@ -1738,6 +1866,28 @@ async function adminUpdateStatus(orderId) {
 }
 
 // ── Admin: File Archive ────────────────────────────────────────────────────────
+
+async function adminMarkShipped(orderId) {
+    const carrier = document.getElementById(`shipCarrier-${orderId}`)?.value;
+    const tracking = document.getElementById(`shipTracking-${orderId}`)?.value.trim();
+    const eta = document.getElementById(`shipEta-${orderId}`)?.value;
+    if (!carrier) { showToast('Please select a carrier.'); return; }
+    if (!tracking) { showToast('Please enter a tracking number.'); return; }
+    try {
+        const res = await fetch(`${API_BASE}/api/Orders/${orderId}/ship`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shippingCarrier: carrier,
+                trackingNumber: tracking,
+                estimatedDelivery: eta || null
+            })
+        });
+        if (!res.ok) { showToast('Failed to update shipping. Please try again.'); return; }
+        showToast('Order marked as shipped! Customer notified. ✓');
+        await adminLoadOrders();
+        adminSelectOrder(orderId);
+    } catch { showToast('Network error.'); }
+}
 
 async function adminLoadFiles() {
     const container = document.getElementById('adminFilesList');

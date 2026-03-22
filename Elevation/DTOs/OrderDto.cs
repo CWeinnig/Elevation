@@ -13,6 +13,12 @@ public class CreateOrderDto
     public string CustomerPhone { get; set; } = string.Empty;
     public List<CreateOrderItemDto> Items { get; set; } = new();
     public List<int> FileIds { get; set; } = new();
+
+    public string ShipToName { get; set; } = string.Empty;
+    public string ShipToStreet { get; set; } = string.Empty;
+    public string ShipToCity { get; set; } = string.Empty;
+    public string ShipToState { get; set; } = string.Empty;
+    public string ShipToZip { get; set; } = string.Empty;
 }
 
 public class CreateOrderItemDto
@@ -41,7 +47,19 @@ public class OrderDto
     public string CustomerEmail { get; set; } = string.Empty;
     public string CustomerPhone { get; set; } = string.Empty;
     public string ProofComments { get; set; } = string.Empty;
-    public string PaymentToken { get; set; } = string.Empty; // Only populated for AwaitingPayment orders
+    public string PaymentToken { get; set; } = string.Empty; 
+
+    public string ShipToName { get; set; } = string.Empty;
+    public string ShipToStreet { get; set; } = string.Empty;
+    public string ShipToCity { get; set; } = string.Empty;
+    public string ShipToState { get; set; } = string.Empty;
+    public string ShipToZip { get; set; } = string.Empty;
+    public decimal ShippingCost { get; set; }
+
+    public string ShippingCarrier { get; set; } = string.Empty;
+    public string TrackingNumber { get; set; } = string.Empty;
+    public DateTime? EstimatedDelivery { get; set; }
+
     public List<OrderItemDto> Items { get; set; } = new();
     public List<UploadedFileDto> UploadedFiles { get; set; } = new();
 }
@@ -72,4 +90,11 @@ public class UpdateOrderStatusDto
 public class UploadProofDto
 {
     public string AdminNotes { get; set; } = string.Empty;
+}
+
+public class ShipOrderDto
+{
+    public string ShippingCarrier { get; set; } = string.Empty;
+    public string TrackingNumber { get; set; } = string.Empty;
+    public DateTime? EstimatedDelivery { get; set; }
 }
