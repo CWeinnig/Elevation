@@ -2,9 +2,6 @@ const API_BASE = 'http://localhost:5249';
 const SQUARE_APP_ID = 'sandbox-sq0idb-BwePK0oD1PR0SnDJLs3w5g';
 const SQUARE_LOCATION_ID = 'L77QZ2Q33YZSD';
 
-// Flat shipping rate — must match Shipping:FlatRateCost in appsettings.json
-const FLAT_SHIPPING_RATE = 8.99;
-
 let products = [];
 let cart = [];
 let currentUser = null;   // { id, name, email, role, createdAt }
@@ -81,7 +78,6 @@ function getStatusColor(status) {
         'RevisionRequested': { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b' },
         'CancellationRequested': { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
         'Pending': { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' },
-        'Shipped': { bg: 'rgba(16,185,129,0.12)', text: '#059669' },
     };
     return map[status] || { bg: 'rgba(107,114,128,0.12)', text: '#6b7280' };
 }
@@ -98,7 +94,6 @@ function formatStatus(status) {
         'RevisionRequested': 'Revision Requested',
         'CancellationRequested': 'Cancellation Requested',
         'Pending': 'Pending',
-        'Shipped': 'Shipped',
     };
     return map[status] || status;
 }
@@ -335,7 +330,6 @@ async function pdSubmitQuote() {
     const email = document.getElementById('pdQuoteEmail').value.trim();
     const phone = document.getElementById('pdQuotePhone')?.value.trim() || '';
     const notes = document.getElementById('pdQuoteNotes').value.trim();
-
     if (!name) { showToast('Please enter your name.'); return; }
     if (!email) { showToast('Please enter your email.'); return; }
     if (!notes) { showToast('Please describe your design — this helps us prepare your quote.'); return; }
@@ -564,18 +558,7 @@ function pdAddToCart() {
 }
 
 function addToCart(item) {
-    const existing = cart.find(i => i.productId === item.productId);
-    if (existing) {
-        existing.qty += item.qty;
-        // Update the file if a new one was provided
-        if (item.imageData) {
-            existing.imageData = item.imageData;
-            existing.imageName = item.imageName;
-            existing.imageFile = item.imageFile;
-        }
-    } else {
-        cart.push({ ...item });
-    }
+    cart.push({ ...item });
     saveCart();
     updateBadge();
     showToast(`"${item.name}" added to cart!`);
@@ -592,27 +575,57 @@ function renderCart() {
         return;
     }
     list.innerHTML = cart.map((item, i) => {
-        const addonTotal = item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
+        const addonTotal = (item.selectedOptions || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
         const unitPrice = item.basePrice + addonTotal;
-        const optionLines = item.selectedOptions.filter(o => o.priceModifier).map(o =>
-            `<div style="font-size:0.8rem;color:var(--muted);margin-left:4px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)}</span></div>`
+        const lineTotal = (unitPrice * item.qty).toFixed(2);
+
+        // Option pills — only show options with a price modifier label, else just the value
+        const optionPills = (item.selectedOptions || []).map(o =>
+            `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:20px;padding:2px 9px;font-size:0.75rem;color:var(--accent2);font-weight:600;white-space:nowrap;">
+                ${escHtml(o.optionValue)}${o.priceModifier ? `<span style="opacity:0.7;">+$${Number(o.priceModifier).toFixed(2)}</span>` : ''}
+            </span>`
         ).join('');
+
+        const imageSection = item.imageData
+            ? `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.18);border-radius:9px;">
+                <img src="${item.imageData}" alt="Design" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0;"/>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.78rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(item.imageName || 'Design file')}</div>
+                    <div style="font-size:0.72rem;color:var(--muted);">Attached design file</div>
+                </div>
+                <button onclick="removeItemImage(${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.75rem;font-family:'DM Sans',sans-serif;flex-shrink:0;padding:2px 4px;">✕ Remove</button>
+              </div>`
+            : `<label for="img-input-${i}" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1.5px dashed var(--border);border-radius:8px;font-size:0.78rem;font-family:'DM Sans',sans-serif;color:var(--muted);cursor:pointer;transition:border-color 0.15s,color 0.15s;" onmouseover="this.style.borderColor='#7c3aed';this.style.color='#7c3aed'" onmouseout="this.style.borderColor='';this.style.color=''">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Attach design file
+              </label>
+              <input type="file" id="img-input-${i}" accept="image/*,application/pdf" style="display:none" onchange="attachItemImage(${i}, this)"/>`;
+
         return `
-            <div class="quote-item">
-                <div class="quote-item-name">${item.name}</div>
-                <div class="quote-item-price-unit">$${item.basePrice.toFixed(2)} base${addonTotal > 0 ? ` + $${addonTotal.toFixed(2)} add-ons` : ''}</div>
-                ${optionLines}
-                <div class="item-image-area">
-                    ${item.imageData
-                ? `<div class="attached-image-preview"><img src="${item.imageData}" alt="Attached design"/><div class="attached-image-info"><span class="attached-image-name">${item.imageName || 'Design file'}</span><button class="remove-img-btn" onclick="removeItemImage(${i})">✕ Remove</button></div></div>`
-                : `<label class="attach-image-label" for="img-input-${i}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Attach Design File</label><input type="file" id="img-input-${i}" accept="image/*,application/pdf" style="display:none" onchange="attachItemImage(${i}, this)"/>`
-            }
+            <div class="quote-item" style="padding:1rem 1rem 0.85rem;">
+                <!-- Row 1: name + remove -->
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                    <div style="font-weight:700;font-size:0.95rem;line-height:1.3;">${escHtml(item.name)}</div>
+                    <button onclick="removeItem(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;line-height:1;padding:0;flex-shrink:0;margin-top:1px;" title="Remove item">✕</button>
                 </div>
-                <div class="quote-item-row">
-                    <div class="qty-wrap"><span>Qty:</span><input class="qty-input" type="number" value="${item.qty}" min="1" onchange="updateQty(${i}, this.value)"/></div>
-                    <div class="quote-item-total">$${(unitPrice * item.qty).toFixed(2)}</div>
+                <!-- Row 2: base price label -->
+                <div style="font-size:0.8rem;color:var(--muted);margin-bottom:${optionPills ? '8px' : '10px'};">
+                    $${item.basePrice.toFixed(2)} base${addonTotal > 0 ? ` + $${addonTotal.toFixed(2)} add-ons` : ''}
                 </div>
-                <button class="remove-btn" onclick="removeItem(${i})">✕</button>
+                <!-- Row 3: option pills (if any) -->
+                ${optionPills ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${optionPills}</div>` : ''}
+                <!-- Row 4: attached image or upload prompt -->
+                <div style="margin-bottom:10px;">${imageSection}</div>
+                <!-- Row 5: qty + line total -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:0.82rem;color:var(--muted);font-weight:500;">Qty</span>
+                        <input class="qty-input" type="number" value="${item.qty}" min="1"
+                            onchange="updateQty(${i}, this.value)"
+                            style="width:58px;padding:5px 8px;font-size:0.88rem;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;text-align:center;"/>
+                    </div>
+                    <div style="font-size:1rem;font-weight:800;color:var(--accent);">$${lineTotal}</div>
+                </div>
             </div>`;
     }).join('');
     const subtotal = getCartSubtotal();
@@ -633,7 +646,7 @@ function clearCart() { const k = cartStorageKey(); if (k) try { localStorage.rem
 
 function getCartSubtotal() {
     return cart.reduce((s, item) => {
-        const addonTotal = item.selectedOptions.reduce((os, o) => os + (o.priceModifier || 0), 0);
+        const addonTotal = (item.selectedOptions || []).reduce((os, o) => os + (o.priceModifier || 0), 0);
         return s + (item.basePrice + addonTotal) * item.qty;
     }, 0);
 }
@@ -668,8 +681,16 @@ async function openRequestModal() {
     if (currentUser) {
         document.getElementById('contactName').value = currentUser.name;
         document.getElementById('contactEmail').value = currentUser.email;
+        // Pre-fill shipping name from account name
         document.getElementById('shipName').value = currentUser.name;
     }
+    // Mirror contact name → ship name as user types
+    const contactNameEl = document.getElementById('contactName');
+    const shipNameEl = document.getElementById('shipName');
+    contactNameEl.oninput = () => {
+        if (!shipNameEl._manuallyEdited) shipNameEl.value = contactNameEl.value;
+    };
+    shipNameEl.oninput = () => { shipNameEl._manuallyEdited = true; };
 
     renderModalOrderDetails();
     document.getElementById('requestModal').classList.add('show');
@@ -685,35 +706,55 @@ function updateCheckoutMode() {
 }
 
 function renderModalOrderDetails() {
-    const subtotal = getCartSubtotal();
-    const grandTotal = subtotal + FLAT_SHIPPING_RATE;
     document.getElementById('modalOrderDetails').innerHTML = cart.map(item => {
-        const addonTotal = item.selectedOptions.reduce((s, o) => s + (o.priceModifier || 0), 0);
-        const optLines = item.selectedOptions.filter(o => o.priceModifier).map(o =>
-            `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)} each</span></div>`
+        const addonTotal = (item.selectedOptions || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
+        const lineTotal = (item.basePrice + addonTotal) * item.qty;
+        const optLines = (item.selectedOptions || []).filter(o => o.priceModifier).map(o =>
+            `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${escHtml(o.optionValue)} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)} each</span></div>`
         ).join('');
-        const isImage = item.imageData && item.imageData.startsWith('data:image');
-        const fileIndicator = item.imageData
-            ? (isImage
-                ? `<img src="${item.imageData}" alt="Design file" style="margin-top:8px;width:100%;max-height:120px;object-fit:contain;border-radius:8px;border:1px solid var(--border);background:var(--bg);" />`
-                : `<div style="margin-top:8px;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 10px;">📎 ${escHtml(item.imageName || 'Design file')}</div>`)
-            : '';
-        return `<div class="order-detail-card" style="flex-direction:column;align-items:stretch;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                <div><div style="font-weight:700;">${item.name}</div><div class="order-detail-qty">${item.qty} × $${item.basePrice.toFixed(2)}</div>${optLines}</div>
+        const imageHtml = item.imageData
+            ? `<img src="${item.imageData}" alt="Design" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1.5px solid var(--border);flex-shrink:0;" />`
+            : `<div style="width:52px;height:52px;border-radius:8px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20" style="color:var(--muted)"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+               </div>`;
+        return `
+        <div class="order-detail-card" style="display:flex;align-items:center;gap:12px;padding:10px 12px;">
+            ${imageHtml}
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(item.name)}</div>
+                <div class="order-detail-qty">${item.qty} × $${item.basePrice.toFixed(2)}</div>
+                ${optLines}
+                ${item.imageName ? `<div style="font-size:11px;color:var(--accent2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📎 ${escHtml(item.imageName)}</div>` : ''}
             </div>
-            ${fileIndicator}
+            <div style="font-weight:700;color:var(--accent);white-space:nowrap;">$${lineTotal.toFixed(2)}</div>
         </div>`;
-    }).join('') +
-        `<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 4px 2px;color:var(--muted);"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>` +
-        `<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 4px;color:var(--muted);"><span>Shipping</span><span>$${FLAT_SHIPPING_RATE.toFixed(2)}</span></div>` +
-        `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:8px 4px 4px;border-top:1px solid var(--border);margin-top:6px;"><span>Total</span><span style="color:var(--accent);">$${grandTotal.toFixed(2)}</span></div>`;
+    }).join('') + (() => {
+        const subtotal = getCartSubtotal();
+        const shipping = 8.99;
+        const total = subtotal + shipping;
+        return `
+        <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);">
+                <span>Subtotal</span><span>$${subtotal.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);">
+                <span>Shipping (flat rate)</span><span>$${shipping.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding-top:6px;border-top:1px solid var(--border);">
+                <span>Total</span><span style="color:var(--accent);">$${total.toFixed(2)}</span>
+            </div>
+        </div>`;
+    })();
 }
 
 function closeRequestModal() {
     document.getElementById('requestModal').classList.remove('show');
     document.body.style.overflow = '';
     if (squareCard) { squareCard.destroy(); squareCard = null; }
+    const shipNameEl = document.getElementById('shipName');
+    if (shipNameEl) shipNameEl._manuallyEdited = false;
+    const contactNameEl = document.getElementById('contactName');
+    if (contactNameEl) contactNameEl.oninput = null;
 }
 function closeModalIfOutside(e) { }
 
@@ -734,6 +775,7 @@ async function submitQuote() {
     const phone = document.getElementById('contactPhone')?.value.trim() || '';
     const isQuote = false;
     const designNotes = (document.getElementById('customDetails')?.value.trim() || document.getElementById('designNotes')?.value.trim() || '');
+
     const shipName = document.getElementById('shipName').value.trim();
     const shipStreet = document.getElementById('shipStreet').value.trim();
     const shipCity = document.getElementById('shipCity').value.trim();
@@ -742,13 +784,16 @@ async function submitQuote() {
 
     if (!name) { showToast('Please enter your name.'); return; }
     if (!email) { showToast('Please enter your email.'); return; }
-    if (!shipName) { showToast('Please enter a name for the shipping address.'); return; }
-    if (!shipStreet) { showToast('Please enter a street address.'); return; }
-    if (!shipCity) { showToast('Please enter a city.'); return; }
-    if (!shipState) { showToast('Please enter a state.'); return; }
-    if (!shipZip) { showToast('Please enter a ZIP code.'); return; }
+    if (!shipName) { showToast('Please enter the shipping name.'); return; }
+    if (!shipStreet) { showToast('Please enter a shipping address.'); return; }
+    if (!shipCity) { showToast('Please enter the city.'); return; }
+    if (!shipState) { showToast('Please enter the state.'); return; }
+    if (!shipZip) { showToast('Please enter the ZIP code.'); return; }
     if (isQuote && !designNotes) { showToast('Please describe your design needs.'); return; }
     if (!isQuote && !squareCard) { showToast('Payment form not ready.'); return; }
+
+    const SHIPPING_COST = 8.99;
+    const grandTotal = getCartSubtotal() + SHIPPING_COST;
 
     const btn = document.getElementById('submitOrderBtn');
     btn.disabled = true; btn.textContent = isQuote ? 'Sending...' : 'Processing...';
@@ -771,7 +816,6 @@ async function submitQuote() {
                 showToast(`Payment error: ${tokenResult.errors?.map(e => e.message).join(', ') || 'Card error.'}`);
                 return;
             }
-            const grandTotal = getCartSubtotal() + FLAT_SHIPPING_RATE;
             const payRes = await fetch(`${API_BASE}/api/Payments/process`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sourceId: tokenResult.token, amountCents: Math.round(grandTotal * 100) })
@@ -790,16 +834,16 @@ async function submitQuote() {
                 isQuoteRequest: isQuote,
                 designNotes: designNotes,
                 customerPhone: phone,
+                fileIds,
                 shipToName: shipName,
                 shipToStreet: shipStreet,
                 shipToCity: shipCity,
                 shipToState: shipState,
                 shipToZip: shipZip,
-                fileIds,
                 items: cart.map(item => ({
                     productId: item.productId,
                     quantity: item.qty,
-                    options: item.selectedOptions.map(o => ({ productOptionId: o.productOptionId }))
+                    options: (item.selectedOptions || []).map(o => ({ productOptionId: o.productOptionId }))
                 }))
             })
         });
@@ -866,8 +910,8 @@ async function checkPaymentReturn() {
 
 function openProofPaymentModal(info) {
     document.getElementById('proofPayEmail').textContent = info.email;
+    // proofPayTotal removed from HTML
     const itemsEl = document.getElementById('proofPayItems');
-    const shippingCost = Number(info.shippingCost || 0);
     itemsEl.innerHTML = (info.items || []).map(i => {
         const addonTotal = (i.options || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
         const baseLineTotal = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
@@ -882,15 +926,9 @@ function openProofPaymentModal(info) {
                 ${optionLines}
             </div>
         </div>`;
-    }).join('') +
-        (shippingCost > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 4px 2px;color:var(--muted);"><span>Shipping</span><span>$${shippingCost.toFixed(2)}</span></div>` : '') +
-        `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:8px 4px 4px;border-top:1px solid var(--border);margin-top:6px;"><span>Total</span><span style="color:var(--accent);">$${Number(info.totalPrice).toFixed(2)}</span></div>`;
+    }).join('') + `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:12px 4px 4px;border-top:1px solid var(--border);margin-top:8px;"><span>Total</span><span style="color:var(--accent);">$${Number(info.totalPrice).toFixed(2)}</span></div>`;
     document.getElementById('proofPayModal').classList.add('show');
     document.body.style.overflow = 'hidden';
-    // Clear shipping fields
-    ['proofShipName', 'proofShipStreet', 'proofShipCity', 'proofShipState', 'proofShipZip'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
-    });
     initProofPaySquare();
 }
 
@@ -927,19 +965,6 @@ function closeProofPayModal() {
 
 async function submitProofPayment() {
     if (!window._proofPayCard) { showToast('Payment form not ready.'); return; }
-
-    const shipName = document.getElementById('proofShipName').value.trim();
-    const shipStreet = document.getElementById('proofShipStreet').value.trim();
-    const shipCity = document.getElementById('proofShipCity').value.trim();
-    const shipState = document.getElementById('proofShipState').value.trim();
-    const shipZip = document.getElementById('proofShipZip').value.trim();
-
-    if (!shipName) { showToast('Please enter a name for the shipping address.'); return; }
-    if (!shipStreet) { showToast('Please enter a street address.'); return; }
-    if (!shipCity) { showToast('Please enter a city.'); return; }
-    if (!shipState) { showToast('Please enter a state.'); return; }
-    if (!shipZip) { showToast('Please enter a ZIP code.'); return; }
-
     const btn = document.getElementById('proofPayBtn');
     btn.disabled = true; btn.textContent = 'Processing...';
     try {
@@ -958,15 +983,7 @@ async function submitProofPayment() {
 
         const completeRes = await fetch(`${API_BASE}/api/Orders/${pendingPayOrderId}/complete-payment`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                paymentToken: pendingPayToken,
-                squarePaymentId: payment.paymentId,
-                shipToName: shipName,
-                shipToStreet: shipStreet,
-                shipToCity: shipCity,
-                shipToState: shipState,
-                shipToZip: shipZip
-            })
+            body: JSON.stringify({ paymentToken: pendingPayToken, squarePaymentId: payment.paymentId })
         });
         if (!completeRes.ok) { showToast('Could not record payment. Please contact us.'); return; }
 
@@ -1188,19 +1205,6 @@ function renderAccountOrders(orders) {
                 ${o.status === 'ProofSent' ? `<button onclick="openProofReviewModal(${o.id}, null)" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Review Proof</button>` : ''}
                 ${o.status === 'AwaitingPayment' ? `<button onclick="reopenPaymentModal(${o.id}, '${o.paymentToken}')" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Complete Payment</button>` : ''}
             </div>` : '';
-
-        const trackingSection = o.trackingNumber ? (() => {
-            const trackingUrl = (o.shippingCarrier || '').toLowerCase().includes('fedex')
-                ? `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(o.trackingNumber)}`
-                : `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(o.trackingNumber)}`;
-            return `
-            <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);">
-                <div style="font-size:0.78rem;font-weight:700;color:#059669;margin-bottom:4px;">📦 Shipped via ${escHtml(o.shippingCarrier)}</div>
-                <a href="${trackingUrl}" target="_blank" rel="noopener" style="font-size:0.85rem;color:var(--accent2);font-weight:600;">Track: ${escHtml(o.trackingNumber)}</a>
-                ${o.estimatedDelivery ? `<div style="font-size:0.78rem;color:var(--muted);margin-top:3px;">Est. delivery: ${new Date(o.estimatedDelivery).toLocaleDateString()}</div>` : ''}
-            </div>`;
-        })() : '';
-
         return `
         <div class="order-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
@@ -1222,9 +1226,7 @@ function renderAccountOrders(orders) {
             return `<div style="margin-bottom:6px;"><div>${it.quantity}x ${escHtml(it.productName)} <span style="color:var(--muted);">— $${baseLineTotal.toFixed(2)}</span></div>${optionLines}</div>`;
         }).join('')}</div>
             ${o.designNotes ? `<div style="margin-top:6px;font-size:0.8rem;color:var(--muted);font-style:italic;">Notes: ${escHtml(o.designNotes)}</div>` : ''}
-            ${o.shipToStreet ? `<div style="margin-top:4px;font-size:0.8rem;color:var(--muted);">Ship to: ${escHtml(o.shipToName)}, ${escHtml(o.shipToStreet)}, ${escHtml(o.shipToCity)}, ${escHtml(o.shipToState)} ${escHtml(o.shipToZip)}</div>` : ''}
             ${proofSection}
-            ${trackingSection}
         </div>`;
     }).join('');
 }
@@ -1707,42 +1709,8 @@ async function adminSelectOrder(id) {
     const designFiles = (order.uploadedFiles || []).filter(f => !f.originalFileName?.startsWith('PROOF_'));
 
     const statusOptions = order.isQuoteRequest
-        ? ['QuoteRequested', 'ProofSent', 'RevisionRequested', 'CancellationRequested', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Shipped', 'Completed', 'Cancelled']
-        : ['Paid', 'Shipped', 'Completed', 'Cancelled'];
-
-    const shippingSection = `
-        <div class="admin-detail-section">
-            <div class="admin-detail-label">Shipping</div>
-            ${order.shipToStreet ? `
-                <div style="font-size:13px;line-height:1.7;margin-bottom:6px;">
-                    ${escHtml(order.shipToName)}<br>
-                    ${escHtml(order.shipToStreet)}<br>
-                    ${escHtml(order.shipToCity)}, ${escHtml(order.shipToState)} ${escHtml(order.shipToZip)}
-                </div>
-                ${order.shippingCost > 0 ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Shipping charged: $${Number(order.shippingCost).toFixed(2)}</div>` : ''}
-            ` : '<div style="font-size:13px;color:var(--muted);margin-bottom:8px;">No shipping address on file.</div>'}
-            ${order.trackingNumber ? `
-                <div style="padding:8px 10px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);">
-                    <div style="font-size:11px;font-weight:700;color:#059669;margin-bottom:4px;">SHIPPED</div>
-                    <div style="font-size:13px;">${escHtml(order.shippingCarrier)} — ${escHtml(order.trackingNumber)}</div>
-                    ${order.estimatedDelivery ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">Est. delivery: ${new Date(order.estimatedDelivery).toLocaleDateString()}</div>` : ''}
-                </div>
-            ` : (order.shipToStreet && ['Paid', 'Completed'].includes(order.status) ? `
-                <div>
-                    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Mark as Shipped</div>
-                    <div style="display:flex;flex-direction:column;gap:6px;">
-                        <select id="shipCarrier-${order.id}" style="padding:7px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;">
-                            <option value="">Select carrier…</option>
-                            <option value="USPS">USPS</option>
-                            <option value="FedEx">FedEx</option>
-                        </select>
-                        <input type="text" id="shipTracking-${order.id}" placeholder="Tracking number" style="padding:7px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
-                        <input type="date" id="shipEta-${order.id}" title="Estimated delivery (optional)" style="padding:7px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
-                        <button onclick="adminMarkShipped(${order.id})" style="padding:8px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Mark as Shipped</button>
-                    </div>
-                </div>
-            ` : '')}
-        </div>`;
+        ? ['QuoteRequested', 'ProofSent', 'RevisionRequested', 'CancellationRequested', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Completed', 'Cancelled']
+        : ['Paid', 'Completed', 'Cancelled'];
 
     document.getElementById('adminOrderDetail').innerHTML = `
         <div style="padding:24px;overflow-y:auto;flex:1;">
@@ -1789,6 +1757,20 @@ async function adminSelectOrder(id) {
                 </div>
             </div>
 
+            ${(order.shipToStreet) ? `
+            <div class="admin-detail-section">
+                <div class="admin-detail-label">Shipping Address</div>
+                <div style="font-size:13px;line-height:1.7;color:var(--text);">
+                    ${order.shipToName ? `<div style="font-weight:600;">${escHtml(order.shipToName)}</div>` : ''}
+                    <div>${escHtml(order.shipToStreet)}</div>
+                    <div>${escHtml(order.shipToCity)}, ${escHtml(order.shipToState)} ${escHtml(order.shipToZip)}</div>
+                    ${order.shippingCost > 0 ? `<div style="margin-top:4px;color:var(--muted);">Shipping cost: <strong style="color:var(--text);">$${Number(order.shippingCost).toFixed(2)}</strong></div>` : ''}
+                    ${order.shippingCarrier ? `<div style="margin-top:4px;color:var(--muted);">Carrier: <strong style="color:var(--text);">${escHtml(order.shippingCarrier)}</strong></div>` : ''}
+                    ${order.trackingNumber ? `<div style="color:var(--muted);">Tracking: <strong style="color:var(--accent2);">${escHtml(order.trackingNumber)}</strong></div>` : ''}
+                    ${order.estimatedDelivery ? `<div style="color:var(--muted);">Est. delivery: <strong style="color:var(--text);">${new Date(order.estimatedDelivery).toLocaleDateString()}</strong></div>` : ''}
+                </div>
+            </div>` : ''}
+
             ${order.designNotes ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">${order.isQuoteRequest ? 'Design Notes' : 'Special Instructions'}</div>
@@ -1813,14 +1795,40 @@ async function adminSelectOrder(id) {
                 ${proofFiles.map(f => `<a href="${API_BASE}/api/Files/${f.id}/download" download="${f.originalFileName.replace('PROOF_', '')}" style="display:block;font-size:13px;color:var(--accent);margin-bottom:4px;">⬇ ${f.originalFileName.replace('PROOF_', '')}</a>`).join('')}
             </div>` : ''}
 
-            ${shippingSection}
-
             ${order.isQuoteRequest && ['QuoteRequested', 'ProofSent', 'RevisionRequested'].includes(order.status) ? `
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Upload Proof</div>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                     <input type="file" id="proofFileInput-${order.id}" accept=".pdf,.png,.jpg,.jpeg,.ai,.eps,.svg" style="font-size:13px;flex:1;min-width:0;" />
                     <button onclick="adminUploadProof(${order.id})" style="padding:8px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Upload Proof</button>
+                </div>
+            </div>` : ''}
+
+            ${['Paid', 'Completed'].includes(order.status) && !order.trackingNumber ? `
+            <div class="admin-detail-section">
+                <div class="admin-detail-label">📦 Mark as Shipped</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <select id="shipCarrier-${order.id}" style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;">
+                        <option value="">Select carrier…</option>
+                        <option value="USPS">USPS</option>
+                        <option value="UPS">UPS</option>
+                        <option value="FedEx">FedEx</option>
+                        <option value="DHL">DHL</option>
+                        <option value="Other">Other</option>
+                    </select>
+                    <input type="text" id="shipTracking-${order.id}" placeholder="Tracking number" style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
+                    <input type="date" id="shipDelivery-${order.id}" placeholder="Est. delivery (optional)" style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
+                    <button onclick="adminShipOrder(${order.id})" style="padding:9px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Mark as Shipped & Notify Customer</button>
+                </div>
+            </div>` : ''}
+
+            ${order.trackingNumber ? `
+            <div class="admin-detail-section" style="border-left:3px solid #10b981;padding-left:10px;">
+                <div class="admin-detail-label" style="color:#10b981;">Shipped</div>
+                <div style="font-size:13px;color:var(--text);line-height:1.7;">
+                    <div>Carrier: <strong>${escHtml(order.shippingCarrier)}</strong></div>
+                    <div>Tracking: <strong style="color:var(--accent2);">${escHtml(order.trackingNumber)}</strong></div>
+                    ${order.estimatedDelivery ? `<div style="color:var(--muted);">Est. delivery: <strong style="color:var(--text);">${new Date(order.estimatedDelivery).toLocaleDateString()}</strong></div>` : ''}
                 </div>
             </div>` : ''}
 
@@ -1865,29 +1873,32 @@ async function adminUpdateStatus(orderId) {
     } catch { showToast('Network error.'); }
 }
 
-// ── Admin: File Archive ────────────────────────────────────────────────────────
-
-async function adminMarkShipped(orderId) {
-    const carrier = document.getElementById(`shipCarrier-${orderId}`)?.value;
+async function adminShipOrder(orderId) {
+    const carrier = document.getElementById(`shipCarrier-${orderId}`)?.value.trim();
     const tracking = document.getElementById(`shipTracking-${orderId}`)?.value.trim();
-    const eta = document.getElementById(`shipEta-${orderId}`)?.value;
+    const deliveryVal = document.getElementById(`shipDelivery-${orderId}`)?.value;
+
     if (!carrier) { showToast('Please select a carrier.'); return; }
     if (!tracking) { showToast('Please enter a tracking number.'); return; }
+
     try {
         const res = await fetch(`${API_BASE}/api/Orders/${orderId}/ship`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 shippingCarrier: carrier,
                 trackingNumber: tracking,
-                estimatedDelivery: eta || null
+                estimatedDelivery: deliveryVal ? new Date(deliveryVal).toISOString() : null
             })
         });
-        if (!res.ok) { showToast('Failed to update shipping. Please try again.'); return; }
-        showToast('Order marked as shipped! Customer notified. ✓');
+        if (!res.ok) { showToast('Failed to mark as shipped.'); return; }
+        showToast('Order marked as shipped! Customer notified with tracking info. ✓');
         await adminLoadOrders();
         adminSelectOrder(orderId);
     } catch { showToast('Network error.'); }
 }
+
+// ── Admin: File Archive ────────────────────────────────────────────────────────
 
 async function adminLoadFiles() {
     const container = document.getElementById('adminFilesList');

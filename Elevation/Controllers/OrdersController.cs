@@ -288,7 +288,21 @@ public class OrdersController : ControllerBase
         if (!string.IsNullOrEmpty(recipient))
         {
             if (dto.NewStatus == "Completed")
-                await _email.SendOrderCompletedAsync(recipient, order.Id, order.TotalPrice);
+            {
+                var completedOrder = await GetOrderWithIncludes(order.Id);
+                var completedItems = completedOrder?.Items?.Select(i => new EmailLineItem
+                {
+                    ProductName = i.Product?.Name ?? "Product",
+                    Quantity = i.Quantity,
+                    UnitPrice = i.UnitPrice,
+                    IsTiered = i.Product?.PriceTiers != null && i.Product.PriceTiers.Any(),
+                    Options = (i.Options ?? new List<OrderOption>())
+                        .Where(o => o.PriceModifier != 0)
+                        .Select(o => new EmailLineItemOption { OptionValue = o.OptionValue, PriceModifier = o.PriceModifier })
+                        .ToList()
+                }).ToList() ?? new();
+                await _email.SendOrderCompletedAsync(recipient, order.Id, order.TotalPrice, completedItems, order.ShippingCost);
+            }
 
             else if (dto.NewStatus == "ProofSent")
             {
@@ -410,7 +424,11 @@ public class OrdersController : ControllerBase
         await _context.SaveChangesAsync();
 
         if (!string.IsNullOrEmpty(recipient))
-            await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl);
+        {
+            var fullOrder = await GetOrderWithIncludes(order.Id);
+            var emailItems = fullOrder != null ? BuildEmailItems(fullOrder) : new();
+            await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl, emailItems, order.ShippingCost);
+        }
 
         var url = $"/?payOrder={order.Id}&token={order.PaymentToken}";
         return Ok(new { message = "Proof approved", paymentUrl = url });
@@ -452,7 +470,11 @@ public class OrdersController : ControllerBase
         await _context.SaveChangesAsync();
 
         if (!string.IsNullOrEmpty(recipient))
-            await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl);
+        {
+            var fullOrder = await GetOrderWithIncludes(order.Id);
+            var emailItems = fullOrder != null ? BuildEmailItems(fullOrder) : new();
+            await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl, emailItems, order.ShippingCost);
+        }
 
         return Ok(new { message = "Proof approved", paymentUrl });
     }
@@ -594,7 +616,9 @@ public class OrdersController : ControllerBase
                 {
                     _context.Notifications.Add(new Notification { OrderId = order.Id, Type = "Proof Approved", Recipient = recipient, SentAt = DateTime.UtcNow });
                     await _context.SaveChangesAsync();
-                    await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl);
+                    var feedbackOrder = await GetOrderWithIncludes(order.Id);
+                    var feedbackItems = feedbackOrder != null ? BuildEmailItems(feedbackOrder) : new();
+                    await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl, feedbackItems, order.ShippingCost);
                 }
                 else await _context.SaveChangesAsync();
                 return Ok(new { message = "Proof approved", paymentUrl = $"/?payOrder={order.Id}&token={order.PaymentToken}" });
@@ -641,7 +665,9 @@ public class OrdersController : ControllerBase
         {
             _context.Notifications.Add(new Notification { OrderId = order.Id, Type = "Proof Approved via Email", Recipient = recipient, SentAt = DateTime.UtcNow });
             await _context.SaveChangesAsync();
-            await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl);
+            var emailOrder = await GetOrderWithIncludes(order.Id);
+            var emailOrderItems = emailOrder != null ? BuildEmailItems(emailOrder) : new();
+            await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl, emailOrderItems, order.ShippingCost);
         }
         else await _context.SaveChangesAsync();
 
@@ -686,6 +712,20 @@ public class OrdersController : ControllerBase
 
         return Ok(new { message = "Order marked as shipped", currentStatus = order.Status });
     }
+
+
+    private List<EmailLineItem> BuildEmailItems(Order order) =>
+        order.Items?.Select(i => new EmailLineItem
+        {
+            ProductName = i.Product?.Name ?? "Product",
+            Quantity = i.Quantity,
+            UnitPrice = i.UnitPrice,
+            IsTiered = i.Product?.PriceTiers != null && i.Product.PriceTiers.Any(),
+            Options = (i.Options ?? new List<OrderOption>())
+                .Where(o => o.PriceModifier != 0)
+                .Select(o => new EmailLineItemOption { OptionValue = o.OptionValue, PriceModifier = o.PriceModifier })
+                .ToList()
+        }).ToList() ?? new();
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -761,10 +801,10 @@ public class OrdersController : ControllerBase
 public class ApproveProofDto { public string PaymentToken { get; set; } = string.Empty; }
 public class ProofFeedbackDto
 {
-    public string Action { get; set; } = string.Empty; 
+    public string Action { get; set; } = string.Empty;
     public string? Comments { get; set; }
-    public string? Token { get; set; }  
-    public int? UserId { get; set; }     
+    public string? Token { get; set; }
+    public int? UserId { get; set; }
 }
 public class CustomerApproveDto { public int UserId { get; set; } }
 public class CompletePaymentDto

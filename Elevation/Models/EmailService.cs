@@ -11,8 +11,8 @@ public interface IEmailService
     Task SendProofReadyAsync(string toEmail, int orderId, string proofDownloadUrl, string approveUrl);
     Task SendAdminRevisionRequestedAsync(string adminEmail, int orderId, string customerEmail, string comments);
     Task SendAdminCancellationRequestedAsync(string adminEmail, int orderId, string customerEmail, string comments);
-    Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total);
-    Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl);
+    Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem>? items = null, decimal shippingCost = 0m);
+    Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl, List<EmailLineItem>? items = null, decimal shippingCost = 0m);
     Task SendEmailConfirmationAsync(string toEmail, string name, string confirmUrl);
     Task SendOrderShippedAsync(string toEmail, int orderId, string carrier, string trackingNumber, DateTime? estimatedDelivery);
 }
@@ -135,10 +135,23 @@ public class SmtpEmailService : IEmailService
         return SendAsync(adminEmail, subject, body);
     }
 
-    public Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total)
+    public Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem>? items = null, decimal shippingCost = 0m)
     {
         var subject = $"Order is Complete – D & J's Elevated Designs";
-        var body = BuildSimple(
+        if (items != null && items.Count > 0)
+        {
+            var body = BuildBase(
+                heading: "Your order is complete! 📦",
+                intro: "Great news — your order is finished and ready. Thank you for choosing D & J's Elevated Designs!",
+                orderId: orderId,
+                items: items,
+                total: total,
+                shippingCost: shippingCost,
+                extra: null
+            );
+            return SendAsync(toEmail, subject, body);
+        }
+        var simpleBody = BuildSimple(
             heading: "Your order is complete! 📦",
             paragraphs: new[]
             {
@@ -148,13 +161,26 @@ public class SmtpEmailService : IEmailService
             ctaText: null,
             ctaUrl: null
         );
-        return SendAsync(toEmail, subject, body);
+        return SendAsync(toEmail, subject, simpleBody);
     }
 
-    public Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl)
+    public Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl, List<EmailLineItem>? items = null, decimal shippingCost = 0m)
     {
         var subject = $"Complete Your Payment for Your Quote – D & J's Elevated Designs";
-        var body = BuildSimple(
+        if (items != null && items.Count > 0)
+        {
+            var body = BuildBase(
+                heading: "Proof approved — complete your payment to start production! 💳",
+                intro: $"You've approved the proof for your quote. Click the button below to securely complete your payment of <strong>${total:F2}</strong>.",
+                orderId: orderId,
+                items: items,
+                total: total,
+                shippingCost: shippingCost,
+                extra: $@"<tr><td style=""padding:0 0 16px 0;""><a href=""{WebUtility.HtmlEncode(paymentUrl)}"" style=""display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;"">Complete Payment</a></td></tr>"
+            );
+            return SendAsync(toEmail, subject, body);
+        }
+        var simpleBody = BuildSimple(
             heading: "Proof approved — complete your payment to start production! 💳",
             paragraphs: new[]
             {
@@ -164,7 +190,7 @@ public class SmtpEmailService : IEmailService
             ctaText: "Complete Payment",
             ctaUrl: paymentUrl
         );
-        return SendAsync(toEmail, subject, body);
+        return SendAsync(toEmail, subject, simpleBody);
     }
 
     public Task SendEmailConfirmationAsync(string toEmail, string name, string confirmUrl)
