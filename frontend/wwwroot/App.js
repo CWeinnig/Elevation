@@ -1,4 +1,5 @@
 const API_BASE = 'http://localhost:5249';
+// const API_BASE = 'https://djdesigns-hvdedvg3ahbddhfj.centralus-01.azurewebsites.net';
 const SQUARE_APP_ID = 'sandbox-sq0idb-BwePK0oD1PR0SnDJLs3w5g';
 const SQUARE_LOCATION_ID = 'L77QZ2Q33YZSD';
 
@@ -1709,8 +1710,8 @@ async function adminSelectOrder(id) {
     const designFiles = (order.uploadedFiles || []).filter(f => !f.originalFileName?.startsWith('PROOF_'));
 
     const statusOptions = order.isQuoteRequest
-        ? ['QuoteRequested', 'ProofSent', 'RevisionRequested', 'CancellationRequested', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Completed', 'Cancelled']
-        : ['Paid', 'Completed', 'Cancelled'];
+        ? ['QuoteRequested', 'ProofSent', 'RevisionRequested', 'CancellationRequested', 'ProofApproved', 'AwaitingPayment', 'Paid', 'Shipped', 'Completed', 'Cancelled']
+        : ['Paid', 'Shipped', 'Completed', 'Cancelled'];
 
     document.getElementById('adminOrderDetail').innerHTML = `
         <div style="padding:24px;overflow-y:auto;flex:1;">
@@ -1724,7 +1725,7 @@ async function adminSelectOrder(id) {
 
             <div class="admin-detail-section">
                 <div class="admin-detail-label">Contact</div>
-                ${order.customerName ? `<div style="font-weight:600;">${escHtml(order.customerName)}</div>` : ''}
+                ${order.customerName ? `<div style="font-weight:600;font-size:13px;">${escHtml(order.customerName)}</div>` : ''}
                 <div style="font-size:13px;margin-top:2px;">
                     <a href="mailto:${escHtml(order.customerEmail || order.guestEmail || '')}" style="color:var(--accent2);">${escHtml(order.customerEmail || order.guestEmail || `User #${order.userId}`)}</a>
                 </div>
@@ -1736,40 +1737,59 @@ async function adminSelectOrder(id) {
                 ${(order.items || []).map(i => {
         const linePrice = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
         const qtyLabel = i.isTiered ? `qty ${i.quantity}` : `${i.quantity}×`;
-        const optionNames = i.options?.map(o => o.optionValue).join(', ');
         const optionLines = (i.options || []).filter(o => o.priceModifier !== 0).map(o =>
             `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0 2px 12px;color:var(--muted);">
-                            <span>+ ${escHtml(o.optionValue)}</span>
-                            <span>+$${o.priceModifier.toFixed(2)}</span>
-                        </div>`
+                <span>+ ${escHtml(o.optionValue)}</span>
+                <span>+$${o.priceModifier.toFixed(2)}</span>
+            </div>`
         ).join('');
         return `
-                    <div style="padding:4px 0;border-bottom:1px solid var(--border);">
-                        <div style="display:flex;justify-content:space-between;font-size:13px;">
-                            <span><strong>${qtyLabel}</strong> ${escHtml(i.productName)}</span>
-                            <span style="font-weight:600;">$${linePrice.toFixed(2)}</span>
-                        </div>
-                        ${optionLines}
-                    </div>`;
+            <div style="padding:4px 0;border-bottom:1px solid var(--border);">
+                <div style="display:flex;justify-content:space-between;font-size:13px;">
+                    <span><strong>${qtyLabel}</strong> ${escHtml(i.productName)}</span>
+                    <span style="font-weight:600;">$${linePrice.toFixed(2)}</span>
+                </div>
+                ${optionLines}
+            </div>`;
     }).join('')}
-                <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding-top:8px;">
+                ${order.shippingCost > 0 ? `
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding-top:6px;color:var(--muted);">
+                    <span>Shipping</span><span>$${Number(order.shippingCost).toFixed(2)}</span>
+                </div>` : ''}
+                <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;padding-top:8px;border-top:1px solid var(--border);margin-top:4px;">
                     <span>Total</span><span style="color:var(--accent);">$${order.totalPrice.toFixed(2)}</span>
                 </div>
             </div>
 
-            ${(order.shipToStreet) ? `
             <div class="admin-detail-section">
-                <div class="admin-detail-label">Shipping Address</div>
-                <div style="font-size:13px;line-height:1.7;color:var(--text);">
-                    ${order.shipToName ? `<div style="font-weight:600;">${escHtml(order.shipToName)}</div>` : ''}
-                    <div>${escHtml(order.shipToStreet)}</div>
-                    <div>${escHtml(order.shipToCity)}, ${escHtml(order.shipToState)} ${escHtml(order.shipToZip)}</div>
-                    ${order.shippingCost > 0 ? `<div style="margin-top:4px;color:var(--muted);">Shipping cost: <strong style="color:var(--text);">$${Number(order.shippingCost).toFixed(2)}</strong></div>` : ''}
-                    ${order.shippingCarrier ? `<div style="margin-top:4px;color:var(--muted);">Carrier: <strong style="color:var(--text);">${escHtml(order.shippingCarrier)}</strong></div>` : ''}
-                    ${order.trackingNumber ? `<div style="color:var(--muted);">Tracking: <strong style="color:var(--accent2);">${escHtml(order.trackingNumber)}</strong></div>` : ''}
-                    ${order.estimatedDelivery ? `<div style="color:var(--muted);">Est. delivery: <strong style="color:var(--text);">${new Date(order.estimatedDelivery).toLocaleDateString()}</strong></div>` : ''}
-                </div>
-            </div>` : ''}
+                <div class="admin-detail-label">Shipping</div>
+                ${order.shipToStreet ? `
+                    <div style="font-size:13px;color:var(--text);line-height:1.6;">
+                        ${order.shipToName ? `<span style="font-weight:600;">${escHtml(order.shipToName)}</span> — ` : ''}${escHtml(order.shipToStreet)}, ${escHtml(order.shipToCity)}, ${escHtml(order.shipToState)} ${escHtml(order.shipToZip)}
+                    </div>
+                ` : `<div style="font-size:13px;color:var(--muted);">No shipping address on file.</div>`}
+                ${order.trackingNumber ? `
+                    <div style="margin-top:8px;padding:8px 10px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);font-size:13px;">
+                        <span style="font-weight:600;color:#059669;">Shipped</span> via ${escHtml(order.shippingCarrier)} —
+                        <strong>${escHtml(order.trackingNumber)}</strong>
+                        ${order.estimatedDelivery ? `<span style="color:var(--muted);"> · Est. ${new Date(order.estimatedDelivery).toLocaleDateString()}</span>` : ''}
+                    </div>
+                ` : (order.shipToStreet && ['Paid', 'Completed'].includes(order.status) ? `
+                    <div style="margin-top:10px;">
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                            <select id="shipCarrier-${order.id}" style="padding:6px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;">
+                                <option value="">Carrier…</option>
+                                <option value="USPS">USPS</option>
+                                <option value="FedEx">FedEx</option>
+                                <option value="UPS">UPS</option>
+                            </select>
+                            <input type="text" id="shipTracking-${order.id}" placeholder="Tracking #" style="flex:1;min-width:120px;padding:6px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
+                            <input type="date" id="shipEta-${order.id}" title="Est. delivery (optional)" style="padding:6px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
+                            <button onclick="adminMarkShipped(${order.id})" style="padding:6px 14px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Ship ✓</button>
+                        </div>
+                    </div>
+                ` : '')}
+            </div>
 
             ${order.designNotes ? `
             <div class="admin-detail-section">
@@ -1800,35 +1820,7 @@ async function adminSelectOrder(id) {
                 <div class="admin-detail-label">Upload Proof</div>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                     <input type="file" id="proofFileInput-${order.id}" accept=".pdf,.png,.jpg,.jpeg,.ai,.eps,.svg" style="font-size:13px;flex:1;min-width:0;" />
-                    <button onclick="adminUploadProof(${order.id})" style="padding:8px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Upload Proof</button>
-                </div>
-            </div>` : ''}
-
-            ${['Paid', 'Completed'].includes(order.status) && !order.trackingNumber ? `
-            <div class="admin-detail-section">
-                <div class="admin-detail-label">📦 Mark as Shipped</div>
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                    <select id="shipCarrier-${order.id}" style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;">
-                        <option value="">Select carrier…</option>
-                        <option value="USPS">USPS</option>
-                        <option value="UPS">UPS</option>
-                        <option value="FedEx">FedEx</option>
-                        <option value="DHL">DHL</option>
-                        <option value="Other">Other</option>
-                    </select>
-                    <input type="text" id="shipTracking-${order.id}" placeholder="Tracking number" style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
-                    <input type="date" id="shipDelivery-${order.id}" placeholder="Est. delivery (optional)" style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;" />
-                    <button onclick="adminShipOrder(${order.id})" style="padding:9px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Mark as Shipped & Notify Customer</button>
-                </div>
-            </div>` : ''}
-
-            ${order.trackingNumber ? `
-            <div class="admin-detail-section" style="border-left:3px solid #10b981;padding-left:10px;">
-                <div class="admin-detail-label" style="color:#10b981;">Shipped</div>
-                <div style="font-size:13px;color:var(--text);line-height:1.7;">
-                    <div>Carrier: <strong>${escHtml(order.shippingCarrier)}</strong></div>
-                    <div>Tracking: <strong style="color:var(--accent2);">${escHtml(order.trackingNumber)}</strong></div>
-                    ${order.estimatedDelivery ? `<div style="color:var(--muted);">Est. delivery: <strong style="color:var(--text);">${new Date(order.estimatedDelivery).toLocaleDateString()}</strong></div>` : ''}
+                    <button onclick="adminUploadProof(${order.id})" style="padding:8px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Upload</button>
                 </div>
             </div>` : ''}
 
@@ -1873,26 +1865,19 @@ async function adminUpdateStatus(orderId) {
     } catch { showToast('Network error.'); }
 }
 
-async function adminShipOrder(orderId) {
-    const carrier = document.getElementById(`shipCarrier-${orderId}`)?.value.trim();
+async function adminMarkShipped(orderId) {
+    const carrier = document.getElementById(`shipCarrier-${orderId}`)?.value;
     const tracking = document.getElementById(`shipTracking-${orderId}`)?.value.trim();
-    const deliveryVal = document.getElementById(`shipDelivery-${orderId}`)?.value;
-
+    const eta = document.getElementById(`shipEta-${orderId}`)?.value;
     if (!carrier) { showToast('Please select a carrier.'); return; }
     if (!tracking) { showToast('Please enter a tracking number.'); return; }
-
     try {
         const res = await fetch(`${API_BASE}/api/Orders/${orderId}/ship`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                shippingCarrier: carrier,
-                trackingNumber: tracking,
-                estimatedDelivery: deliveryVal ? new Date(deliveryVal).toISOString() : null
-            })
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shippingCarrier: carrier, trackingNumber: tracking, estimatedDelivery: eta || null })
         });
         if (!res.ok) { showToast('Failed to mark as shipped.'); return; }
-        showToast('Order marked as shipped! Customer notified with tracking info. ✓');
+        showToast('Order marked as shipped! Customer notified. ✓');
         await adminLoadOrders();
         adminSelectOrder(orderId);
     } catch { showToast('Network error.'); }
