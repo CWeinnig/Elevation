@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
 using Elevation.DTOs;
+using Elevation.Services;
 
 namespace Elevation.Controllers;
 
@@ -10,23 +11,22 @@ namespace Elevation.Controllers;
 public class FilesController : ControllerBase
 {
     private readonly AppDbContext _context;
-    private readonly IWebHostEnvironment _env;
+    private readonly IBlobService _blob;
 
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".ai", ".eps", ".svg"
     };
 
-    private const long MaxFileSizeBytes = 50 * 1024 * 1024;
+    private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
 
-    public FilesController(AppDbContext context, IWebHostEnvironment env)
+    public FilesController(AppDbContext context, IBlobService blob)
     {
         _context = context;
-        _env = env;
+        _blob = blob;
     }
 
-    // POST: api/Files/upload
-    // orderId is optional — file can be uploaded before the order exists
+    // ── POST api/Files/upload ─────────────────────────────────────────────────
     [HttpPost("upload")]
     public async Task<IActionResult> UploadFile(IFormFile file, [FromForm] int? orderId)
     {
@@ -36,49 +36,41 @@ public class FilesController : ControllerBase
         if (file.Length > MaxFileSizeBytes)
             return BadRequest("File exceeds the maximum allowed size of 50 MB.");
 
-        var fileExtension = Path.GetExtension(file.FileName);
-        if (!AllowedExtensions.Contains(fileExtension))
-            return BadRequest($"File type '{fileExtension}' is not allowed. " +
-                              $"Accepted types: {string.Join(", ", AllowedExtensions)}");
+        var ext = Path.GetExtension(file.FileName);
+        if (!AllowedExtensions.Contains(ext))
+            return BadRequest($"File type '{ext}' is not allowed. Accepted: {string.Join(", ", AllowedExtensions)}");
 
-        if (orderId.HasValue)
-        {
-            var orderExists = await _context.Orders.AnyAsync(o => o.Id == orderId.Value);
-            if (!orderExists) return BadRequest("Invalid Order ID.");
-        }
+        if (orderId.HasValue && !await _context.Orders.AnyAsync(o => o.Id == orderId.Value))
+            return BadRequest("Invalid Order ID.");
 
-        var uploadsRoot = Path.Combine(_env.WebRootPath, "uploads");
-        if (!Directory.Exists(uploadsRoot)) Directory.CreateDirectory(uploadsRoot);
+        var storedFileName = $"{Guid.NewGuid()}{ext}";
+        var contentType = GetContentType(storedFileName);
 
-        var trustedFileName = $"{Guid.NewGuid()}{fileExtension}";
-        var physicalPath = Path.Combine(uploadsRoot, trustedFileName);
+        string blobUrl;
+        using (var stream = file.OpenReadStream())
+            blobUrl = await _blob.UploadAsync(stream, storedFileName, contentType);
 
-        using (var stream = new FileStream(physicalPath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        var uploadedFile = new UploadedFile
+        var record = new UploadedFile
         {
             OrderId = orderId,
             OriginalFileName = file.FileName,
-            StoredFileName = trustedFileName,
-            FilePath = $"/uploads/{trustedFileName}",
+            StoredFileName = storedFileName,
+            FilePath = blobUrl,          // store the blob URL in FilePath
             UploadedAt = DateTime.UtcNow
         };
 
-        _context.UploadedFiles.Add(uploadedFile);
+        _context.UploadedFiles.Add(record);
         await _context.SaveChangesAsync();
 
         return Ok(new
         {
             message = "File uploaded successfully",
-            fileId = uploadedFile.Id,
-            downloadUrl = Url.Action(nameof(DownloadFile), "Files", new { id = uploadedFile.Id }, Request.Scheme)
+            fileId = record.Id,
+            downloadUrl = Url.Action(nameof(DownloadFile), "Files", new { id = record.Id }, Request.Scheme)
         });
     }
 
-    // GET: api/Files/all  (admin — returns all files grouped by order for archive view)
+    // ── GET api/Files/all ─────────────────────────────────────────────────────
     [HttpGet("all")]
     public async Task<ActionResult<IEnumerable<UploadedFileDto>>> GetAllFiles()
     {
@@ -97,12 +89,12 @@ public class FilesController : ControllerBase
         return Ok(files);
     }
 
-    // GET: api/Files/order/{orderId}
+    // ── GET api/Files/order/{orderId} ─────────────────────────────────────────
     [HttpGet("order/{orderId}")]
     public async Task<ActionResult<IEnumerable<UploadedFileDto>>> GetFilesForOrder(int orderId)
     {
-        var orderExists = await _context.Orders.AnyAsync(o => o.Id == orderId);
-        if (!orderExists) return NotFound($"Order {orderId} not found.");
+        if (!await _context.Orders.AnyAsync(o => o.Id == orderId))
+            return NotFound($"Order {orderId} not found.");
 
         var files = await _context.UploadedFiles
             .Where(f => f.OrderId == orderId)
@@ -120,26 +112,42 @@ public class FilesController : ControllerBase
         return Ok(files);
     }
 
-    // GET: api/Files/{id}/download
+    // ── GET api/Files/{id}/download ───────────────────────────────────────────
+    // Streams the blob so the original filename is preserved in the download.
     [HttpGet("{id}/download")]
     public async Task<IActionResult> DownloadFile(int id)
     {
-        var uploadedFile = await _context.UploadedFiles.FindAsync(id);
-        if (uploadedFile == null) return NotFound($"File {id} not found.");
+        var record = await _context.UploadedFiles.FindAsync(id);
+        if (record == null) return NotFound($"File {id} not found.");
 
-        var physicalPath = Path.Combine(_env.WebRootPath, "uploads", uploadedFile.StoredFileName);
-        if (!System.IO.File.Exists(physicalPath))
-            return NotFound("File record exists in the database but the physical file is missing.");
-
-        var contentType = GetContentType(uploadedFile.StoredFileName);
-        var stream = new FileStream(physicalPath, FileMode.Open, FileAccess.Read);
-        return File(stream, contentType, uploadedFile.OriginalFileName);
+        try
+        {
+            var (stream, contentType) = await _blob.DownloadAsync(record.StoredFileName);
+            return File(stream, contentType, record.OriginalFileName);
+        }
+        catch
+        {
+            return NotFound("The file could not be retrieved from storage.");
+        }
     }
 
-    private static string GetContentType(string fileName)
+    // ── DELETE api/Files/{id} ─────────────────────────────────────────────────
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteFile(int id)
     {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        return ext switch
+        var record = await _context.UploadedFiles.FindAsync(id);
+        if (record == null) return NotFound();
+
+        await _blob.DeleteAsync(record.StoredFileName);
+        _context.UploadedFiles.Remove(record);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static string GetContentType(string fileName) =>
+        Path.GetExtension(fileName).ToLowerInvariant() switch
         {
             ".pdf" => "application/pdf",
             ".png" => "image/png",
@@ -152,5 +160,4 @@ public class FilesController : ControllerBase
             ".svg" => "image/svg+xml",
             _ => "application/octet-stream"
         };
-    }
 }

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿// /mnt/project/OrdersController.cs
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Elevation.Models;
 using Elevation.DTOs;
@@ -11,16 +12,16 @@ namespace Elevation.Controllers;
 public class OrdersController : ControllerBase
 {
     private readonly AppDbContext _context;
-    private readonly IWebHostEnvironment _env;
     private readonly IEmailService _email;
     private readonly IConfiguration _config;
+    private readonly IBlobService _blob;
 
-    public OrdersController(AppDbContext context, IWebHostEnvironment env, IEmailService email, IConfiguration config)
+    public OrdersController(AppDbContext context, IEmailService email, IConfiguration config, IBlobService blob)
     {
         _context = context;
-        _env = env;
         _email = email;
         _config = config;
+        _blob = blob;
     }
 
     private string FrontendBase =>
@@ -37,7 +38,6 @@ public class OrdersController : ControllerBase
         if (!dto.IsQuoteRequest && string.IsNullOrEmpty(dto.SquarePaymentId))
             return BadRequest("Payment verification failed: Missing SquarePaymentId.");
 
-        // 1. Resolve recipient
         string recipientEmail;
         int? resolvedUserId = null;
 
@@ -57,7 +57,6 @@ public class OrdersController : ControllerBase
             return BadRequest("Either a UserId or GuestEmail is required.");
         }
 
-        // 2. Validate files
         var filesToAttach = new List<UploadedFile>();
         foreach (var fileId in dto.FileIds)
         {
@@ -67,7 +66,6 @@ public class OrdersController : ControllerBase
             filesToAttach.Add(file);
         }
 
-        // 3. Validate products and build items
         var orderItems = new List<OrderItem>();
         decimal totalPrice = 0;
 
@@ -78,7 +76,6 @@ public class OrdersController : ControllerBase
                 .FirstOrDefaultAsync(p => p.Id == itemDto.ProductId);
             if (dbProduct == null) return BadRequest($"Product ID {itemDto.ProductId} not found.");
 
-            // Resolve tier price: find the highest tier whose MinQty <= ordered qty
             decimal baseCost = dbProduct.BasePrice;
             bool isTiered = dbProduct.PriceTiers != null && dbProduct.PriceTiers.Any();
             if (isTiered)
@@ -111,21 +108,16 @@ public class OrdersController : ControllerBase
                 });
             }
 
-            // For tiered products, baseCost IS the batch total — don't multiply by qty
-            // For flat products, only base price scales with quantity; add-ons are per-order, not per-unit
             totalPrice += isTiered ? (baseCost + addonCost) : (baseCost + addonCost) * itemDto.Quantity;
             orderItems.Add(new OrderItem
             {
                 ProductId = itemDto.ProductId,
                 Quantity = itemDto.Quantity,
-                UnitPrice = baseCost,  // base only — add-ons tracked separately in Options
+                UnitPrice = baseCost,
                 Options = orderOptions
             });
         }
 
-        // 3b. Resolve shipping cost
-        // Currently uses a flat rate from config. To switch to calculated rates in the future,
-        // replace this block with a carrier API call using dto.ShipTo* fields — nothing else changes.
         decimal shippingCost = 0m;
         bool hasShippingAddress = !string.IsNullOrWhiteSpace(dto.ShipToStreet);
         if (hasShippingAddress)
@@ -134,7 +126,6 @@ public class OrdersController : ControllerBase
             totalPrice += shippingCost;
         }
 
-        // 4. Write to DB
         var initialStatus = dto.IsQuoteRequest ? "QuoteRequested" : "Paid";
 
         var order = new Order
@@ -154,6 +145,7 @@ public class OrdersController : ControllerBase
             ShipToState = dto.ShipToState,
             ShipToZip = dto.ShipToZip,
             ShippingCost = shippingCost,
+            CustomerPhone = dto.CustomerPhone,
             Items = orderItems,
             Notifications = new List<Notification>(),
             UploadedFiles = new List<UploadedFile>()
@@ -176,7 +168,6 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // 5. Send confirmation email
         var emailItems = new List<EmailLineItem>();
         foreach (var i in orderItems)
         {
@@ -284,7 +275,6 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // Send actual email based on new status
         if (!string.IsNullOrEmpty(recipient))
         {
             if (dto.NewStatus == "Completed")
@@ -303,7 +293,6 @@ public class OrdersController : ControllerBase
                 }).ToList() ?? new();
                 await _email.SendOrderCompletedAsync(recipient, order.Id, order.TotalPrice, completedItems, order.ShippingCost);
             }
-
             else if (dto.NewStatus == "ProofSent")
             {
                 var proofFile = order.UploadedFiles?
@@ -322,7 +311,7 @@ public class OrdersController : ControllerBase
         return Ok(new { message = "Status updated", currentStatus = order.Status });
     }
 
-    // ── Upload proof (admin) ──────────────────────────────────────────────────
+    // ── Upload proof (admin) — now uses Azure Blob Storage ───────────────────
 
     [HttpPost("{id}/proof")]
     public async Task<IActionResult> UploadProof(int id, IFormFile file)
@@ -336,22 +325,20 @@ public class OrdersController : ControllerBase
         if (!order.IsQuoteRequest)
             return BadRequest("This order is not a quote request.");
 
-        var uploadsRoot = Path.Combine(_env.WebRootPath, "uploads");
-        if (!Directory.Exists(uploadsRoot)) Directory.CreateDirectory(uploadsRoot);
-
         var ext = Path.GetExtension(file.FileName);
-        var storedName = $"proof_{id}_{Guid.NewGuid():N}{ext}";
-        var physicalPath = Path.Combine(uploadsRoot, storedName);
+        var storedFileName = $"proof_{id}_{Guid.NewGuid():N}{ext}";
+        var contentType = GetContentType(storedFileName);
 
-        using (var stream = new FileStream(physicalPath, FileMode.Create))
-            await file.CopyToAsync(stream);
+        string blobUrl;
+        using (var stream = file.OpenReadStream())
+            blobUrl = await _blob.UploadAsync(stream, storedFileName, contentType);
 
         var proofFile = new UploadedFile
         {
             OrderId = order.Id,
             OriginalFileName = $"PROOF_{file.FileName}",
-            StoredFileName = storedName,
-            FilePath = $"/uploads/{storedName}",
+            StoredFileName = storedFileName,
+            FilePath = blobUrl,
             UploadedAt = DateTime.UtcNow
         };
         _context.UploadedFiles.Add(proofFile);
@@ -395,18 +382,11 @@ public class OrdersController : ControllerBase
     {
         var order = await _context.Orders.FindAsync(id);
         if (order == null) return NotFound();
-
-        if (!order.IsQuoteRequest)
-            return BadRequest("This order is not a quote request.");
-
-        if (order.Status != "ProofSent")
-            return BadRequest($"Cannot approve proof — current status is '{order.Status}'.");
-
-        if (order.PaymentToken != dto.PaymentToken)
-            return Unauthorized("Invalid payment token.");
+        if (!order.IsQuoteRequest) return BadRequest("This order is not a quote request.");
+        if (order.Status != "ProofSent") return BadRequest($"Cannot approve proof — current status is '{order.Status}'.");
+        if (order.PaymentToken != dto.PaymentToken) return Unauthorized("Invalid payment token.");
 
         order.Status = "AwaitingPayment";
-
         var paymentUrl = $"{FrontendBase}/?payOrder={order.Id}&token={order.PaymentToken}";
 
         var recipient = await ResolveRecipient(order);
@@ -430,8 +410,7 @@ public class OrdersController : ControllerBase
             await _email.SendPaymentLinkAsync(recipient, order.Id, order.TotalPrice, paymentUrl, emailItems, order.ShippingCost);
         }
 
-        var url = $"/?payOrder={order.Id}&token={order.PaymentToken}";
-        return Ok(new { message = "Proof approved", paymentUrl = url });
+        return Ok(new { message = "Proof approved", paymentUrl = $"/?payOrder={order.Id}&token={order.PaymentToken}" });
     }
 
     // ── Approve proof (customer account page) ────────────────────────────────
@@ -441,18 +420,11 @@ public class OrdersController : ControllerBase
     {
         var order = await _context.Orders.FindAsync(id);
         if (order == null) return NotFound();
-
-        if (!order.IsQuoteRequest)
-            return BadRequest("This order is not a quote request.");
-
-        if (order.Status != "ProofSent")
-            return BadRequest($"Cannot approve proof — current status is '{order.Status}'.");
-
-        if (!order.UserId.HasValue || order.UserId.Value != dto.UserId)
-            return Unauthorized("You are not authorized to approve this order.");
+        if (!order.IsQuoteRequest) return BadRequest("This order is not a quote request.");
+        if (order.Status != "ProofSent") return BadRequest($"Cannot approve proof — current status is '{order.Status}'.");
+        if (!order.UserId.HasValue || order.UserId.Value != dto.UserId) return Unauthorized("You are not authorized to approve this order.");
 
         order.Status = "AwaitingPayment";
-
         var paymentUrl = $"{FrontendBase}/?payOrder={order.Id}&token={order.PaymentToken}";
 
         var recipient = await ResolveRecipient(order);
@@ -486,12 +458,8 @@ public class OrdersController : ControllerBase
     {
         var order = await GetOrderWithIncludes(id);
         if (order == null) return NotFound();
-
-        if (order.PaymentToken != token)
-            return Unauthorized("Invalid payment token.");
-
-        if (order.Status != "AwaitingPayment")
-            return BadRequest($"Order is not awaiting payment (status: {order.Status}).");
+        if (order.PaymentToken != token) return Unauthorized("Invalid payment token.");
+        if (order.Status != "AwaitingPayment") return BadRequest($"Order is not awaiting payment (status: {order.Status}).");
 
         return Ok(new
         {
@@ -520,25 +488,18 @@ public class OrdersController : ControllerBase
     {
         var order = await _context.Orders.FindAsync(id);
         if (order == null) return NotFound();
-
-        if (order.PaymentToken != dto.PaymentToken)
-            return Unauthorized("Invalid payment token.");
-
-        if (order.Status != "AwaitingPayment")
-            return BadRequest($"Order is not awaiting payment (status: {order.Status}).");
+        if (order.PaymentToken != dto.PaymentToken) return Unauthorized("Invalid payment token.");
+        if (order.Status != "AwaitingPayment") return BadRequest($"Order is not awaiting payment (status: {order.Status}).");
 
         order.SquarePaymentId = dto.SquarePaymentId;
         order.Status = "Paid";
         order.PaymentToken = string.Empty;
-
-        // Save shipping address collected at payment time
         order.ShipToName = dto.ShipToName;
         order.ShipToStreet = dto.ShipToStreet;
         order.ShipToCity = dto.ShipToCity;
         order.ShipToState = dto.ShipToState;
         order.ShipToZip = dto.ShipToZip;
 
-        // Apply flat shipping cost now that we have an address
         if (!string.IsNullOrWhiteSpace(dto.ShipToStreet) && order.ShippingCost == 0m)
         {
             var flatRate = _config.GetValue<decimal>("Shipping:FlatRateCost", 8.99m);
@@ -588,12 +549,8 @@ public class OrdersController : ControllerBase
     {
         var order = await _context.Orders.FindAsync(id);
         if (order == null) return NotFound();
-
-        if (!order.IsQuoteRequest)
-            return BadRequest("This order is not a quote request.");
-
-        if (order.Status != "ProofSent")
-            return BadRequest($"Cannot review proof — current status is '{order.Status}'.");
+        if (!order.IsQuoteRequest) return BadRequest("This order is not a quote request.");
+        if (order.Status != "ProofSent") return BadRequest($"Cannot review proof — current status is '{order.Status}'.");
 
         bool authenticated = false;
         if (!string.IsNullOrEmpty(dto.Token))
@@ -601,8 +558,7 @@ public class OrdersController : ControllerBase
         else if (dto.UserId.HasValue)
             authenticated = order.UserId.HasValue && order.UserId.Value == dto.UserId.Value;
 
-        if (!authenticated)
-            return Unauthorized("Invalid token or user.");
+        if (!authenticated) return Unauthorized("Invalid token or user.");
 
         order.ProofComments = dto.Comments ?? string.Empty;
         var recipient = await ResolveRecipient(order);
@@ -681,11 +637,8 @@ public class OrdersController : ControllerBase
     {
         var order = await _context.Orders.FindAsync(id);
         if (order == null) return NotFound();
-
-        if (string.IsNullOrWhiteSpace(dto.ShippingCarrier))
-            return BadRequest("Shipping carrier is required.");
-        if (string.IsNullOrWhiteSpace(dto.TrackingNumber))
-            return BadRequest("Tracking number is required.");
+        if (string.IsNullOrWhiteSpace(dto.ShippingCarrier)) return BadRequest("Shipping carrier is required.");
+        if (string.IsNullOrWhiteSpace(dto.TrackingNumber)) return BadRequest("Tracking number is required.");
 
         order.ShippingCarrier = dto.ShippingCarrier;
         order.TrackingNumber = dto.TrackingNumber;
@@ -707,12 +660,27 @@ public class OrdersController : ControllerBase
         await _context.SaveChangesAsync();
 
         if (!string.IsNullOrEmpty(recipient))
-            await _email.SendOrderShippedAsync(recipient, order.Id, dto.ShippingCarrier,
-                dto.TrackingNumber, dto.EstimatedDelivery);
+            await _email.SendOrderShippedAsync(recipient, order.Id, dto.ShippingCarrier, dto.TrackingNumber, dto.EstimatedDelivery);
 
         return Ok(new { message = "Order marked as shipped", currentStatus = order.Status });
     }
 
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static string GetContentType(string fileName) =>
+        Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" => "image/jpeg",
+            ".jpeg" => "image/jpeg",
+            ".tiff" => "image/tiff",
+            ".tif" => "image/tiff",
+            ".ai" => "application/postscript",
+            ".eps" => "application/postscript",
+            ".svg" => "image/svg+xml",
+            _ => "application/octet-stream"
+        };
 
     private List<EmailLineItem> BuildEmailItems(Order order) =>
         order.Items?.Select(i => new EmailLineItem
@@ -726,8 +694,6 @@ public class OrdersController : ControllerBase
                 .Select(o => new EmailLineItemOption { OptionValue = o.OptionValue, PriceModifier = o.PriceModifier })
                 .ToList()
         }).ToList() ?? new();
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<Order?> GetOrderWithIncludes(int id) =>
         await _context.Orders
