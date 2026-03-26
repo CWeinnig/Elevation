@@ -746,19 +746,23 @@ async function initSquare() {
         squareCard = await squarePayments.card({
             style: {
                 '.input-container': { borderRadius: '10px' },
-                '.input-container.is-focus': { borderColor: '#7c3aed' },
-                '.message-text': { color: '#ef4444' },
-                '.message-icon': { color: '#ef4444' }
+                '.input-container.is-focus': { borderColor: '#7c3aed' }
             }
         });
         await squareCard.attach('#square-card-container');
         const statusEl = document.getElementById('payment-status-container');
-        squareCard.addEventListener('errorClassAdded', () => {
-            if (statusEl) { statusEl.textContent = 'Please enter a valid card number.'; statusEl.style.color = '#ef4444'; }
-        });
-        squareCard.addEventListener('errorClassRemoved', () => {
-            if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
-        });
+        if (statusEl) {
+            const forceStyle = () => {
+                statusEl.style.color = '#374151';
+                statusEl.style.background = 'rgba(255,255,255,0.92)';
+                statusEl.querySelectorAll('*').forEach(el => {
+                    el.style.color = '#374151';
+                    el.style.background = 'transparent';
+                });
+            };
+            forceStyle();
+            new MutationObserver(forceStyle).observe(statusEl, { childList: true, subtree: true, characterData: true, attributes: true });
+        }
     } catch (e) {
         document.getElementById('square-card-container').innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">Payment form failed to load.</p>';
     }
@@ -928,20 +932,24 @@ async function initProofPaySquare() {
         const card = await payments.card({
             style: {
                 '.input-container': { borderRadius: '10px' },
-                '.input-container.is-focus': { borderColor: '#7c3aed' },
-                '.message-text': { color: '#ef4444' },
-                '.message-icon': { color: '#ef4444' }
+                '.input-container.is-focus': { borderColor: '#7c3aed' }
             }
         });
         await card.attach('#proof-pay-card-container');
         window._proofPayCard = card;
         const proofStatusEl = document.getElementById('proof-payment-status-container');
-        card.addEventListener('errorClassAdded', () => {
-            if (proofStatusEl) { proofStatusEl.textContent = 'Please enter a valid card number.'; proofStatusEl.style.color = '#ef4444'; }
-        });
-        card.addEventListener('errorClassRemoved', () => {
-            if (proofStatusEl) { proofStatusEl.textContent = ''; proofStatusEl.style.color = ''; }
-        });
+        if (proofStatusEl) {
+            const forceStyle = () => {
+                proofStatusEl.style.color = '#374151';
+                proofStatusEl.style.background = 'rgba(255,255,255,0.92)';
+                proofStatusEl.querySelectorAll('*').forEach(el => {
+                    el.style.color = '#374151';
+                    el.style.background = 'transparent';
+                });
+            };
+            forceStyle();
+            new MutationObserver(forceStyle).observe(proofStatusEl, { childList: true, subtree: true, characterData: true, attributes: true });
+        }
     } catch (e) {
         document.getElementById('proof-pay-card-container').innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">Payment form failed to load.</p>';
     }

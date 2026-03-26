@@ -347,7 +347,7 @@ input[type="password"] {
     inset: 0;
     background: rgba(0,0,0,0.45);
     z-index: 200;
-    /*backdrop-filter: blur(3px);*/
+   /* backdrop-filter: blur(3px); */
     justify-content: flex-end;
     align-items: stretch;
 }
@@ -720,9 +720,9 @@ input[type="password"] {
 #square-card-container,
 #proof-pay-card-container {
     min-height: 80px;
-    margin-bottom: 1rem;
+    margin-bottom: 0;
     padding: 12px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.92);
     border-radius: 10px;
     overflow: hidden;
 }
@@ -739,9 +739,18 @@ input[type="password"] {
     gap: 6px;
     font-size: 0.82rem;
     font-weight: 500;
-    color: red;
-    padding: 2px 2px 6px;
-    min-height: 23px;
+    color: #374151 !important;
+    padding: 0 12px;
+    min-height: 0;
+    background: transparent;
+}
+
+#payment-status-container:not(:empty) {
+    padding: 6px 12px 8px;
+}
+
+#payment-status-container * {
+    color: #374151 !important;
 }
 
 /* ── Sign In Modal ── */
@@ -1673,6 +1682,9 @@ input[type="password"] {
     stroke-linejoin: round;
 }
 
+/* ══════════════════════════════════════════
+   QUOTES HISTORY PANEL
+══════════════════════════════════════════ */
 
 .qh-card {
     background: var(--bg);
