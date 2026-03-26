@@ -6,14 +6,15 @@ namespace Elevation.Services;
 
 public interface IEmailService
 {
-    Task SendOrderConfirmedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem> items);
+    Task SendOrderConfirmedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem> items, decimal shippingCost = 0m);
     Task SendQuoteReceivedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem> items, string designNotes);
     Task SendProofReadyAsync(string toEmail, int orderId, string proofDownloadUrl, string approveUrl);
     Task SendAdminRevisionRequestedAsync(string adminEmail, int orderId, string customerEmail, string comments);
     Task SendAdminCancellationRequestedAsync(string adminEmail, int orderId, string customerEmail, string comments);
-    Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total);
-    Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl);
+    Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem>? items = null, decimal shippingCost = 0m);
+    Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl, List<EmailLineItem>? items = null, decimal shippingCost = 0m);
     Task SendEmailConfirmationAsync(string toEmail, string name, string confirmUrl);
+    Task SendOrderShippedAsync(string toEmail, int orderId, string carrier, string trackingNumber, DateTime? estimatedDelivery);
 }
 
 public class EmailLineItem
@@ -52,15 +53,16 @@ public class SmtpEmailService : IEmailService
 
     // ── Public send methods ───────────────────────────────────────────────────
 
-    public Task SendOrderConfirmedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem> items)
+    public Task SendOrderConfirmedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem> items, decimal shippingCost = 0m)
     {
         var subject = $"Order Confirmed – D & J's Elevated Designs";
         var body = BuildBase(
             heading: "Your order is confirmed! 🎉",
-            intro: $"Thanks for your order. We've received your payment and will begin production soon.",
+            intro: "Thanks for your order. We've received your payment and will begin production soon.",
             orderId: orderId,
             items: items,
             total: total,
+            shippingCost: shippingCost,
             extra: null
         );
         return SendAsync(toEmail, subject, body);
@@ -84,6 +86,7 @@ public class SmtpEmailService : IEmailService
             orderId: orderId,
             items: items,
             total: total,
+            shippingCost: 0m,
             extra: notesHtml
         );
         return SendAsync(toEmail, subject, body);
@@ -132,26 +135,52 @@ public class SmtpEmailService : IEmailService
         return SendAsync(adminEmail, subject, body);
     }
 
-    public Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total)
+    public Task SendOrderCompletedAsync(string toEmail, int orderId, decimal total, List<EmailLineItem>? items = null, decimal shippingCost = 0m)
     {
         var subject = $"Order is Complete – D & J's Elevated Designs";
-        var body = BuildSimple(
+        if (items != null && items.Count > 0)
+        {
+            var body = BuildBase(
+                heading: "Your order is complete! 📦",
+                intro: "Great news — your order is finished and ready. Thank you for choosing D & J's Elevated Designs!",
+                orderId: orderId,
+                items: items,
+                total: total,
+                shippingCost: shippingCost,
+                extra: null
+            );
+            return SendAsync(toEmail, subject, body);
+        }
+        var simpleBody = BuildSimple(
             heading: "Your order is complete! 📦",
             paragraphs: new[]
             {
-                $"Great news — Order is finished and ready. Thank you for choosing D & J's Elevated Designs!",
+                "Great news — your order is finished and ready. Thank you for choosing D & J's Elevated Designs!",
                 "If you have any questions about your order, feel free to reply to this email or contact us directly."
             },
             ctaText: null,
             ctaUrl: null
         );
-        return SendAsync(toEmail, subject, body);
+        return SendAsync(toEmail, subject, simpleBody);
     }
 
-    public Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl)
+    public Task SendPaymentLinkAsync(string toEmail, int orderId, decimal total, string paymentUrl, List<EmailLineItem>? items = null, decimal shippingCost = 0m)
     {
         var subject = $"Complete Your Payment for Your Quote – D & J's Elevated Designs";
-        var body = BuildSimple(
+        if (items != null && items.Count > 0)
+        {
+            var body = BuildBase(
+                heading: "Proof approved — complete your payment to start production! 💳",
+                intro: $"You've approved the proof for your quote. Click the button below to securely complete your payment of <strong>${total:F2}</strong>.",
+                orderId: orderId,
+                items: items,
+                total: total,
+                shippingCost: shippingCost,
+                extra: $@"<tr><td style=""padding:0 0 16px 0;""><a href=""{WebUtility.HtmlEncode(paymentUrl)}"" style=""display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;"">Complete Payment</a></td></tr>"
+            );
+            return SendAsync(toEmail, subject, body);
+        }
+        var simpleBody = BuildSimple(
             heading: "Proof approved — complete your payment to start production! 💳",
             paragraphs: new[]
             {
@@ -161,7 +190,7 @@ public class SmtpEmailService : IEmailService
             ctaText: "Complete Payment",
             ctaUrl: paymentUrl
         );
-        return SendAsync(toEmail, subject, body);
+        return SendAsync(toEmail, subject, simpleBody);
     }
 
     public Task SendEmailConfirmationAsync(string toEmail, string name, string confirmUrl)
@@ -176,6 +205,35 @@ public class SmtpEmailService : IEmailService
             },
             ctaText: "Confirm Email",
             ctaUrl: confirmUrl
+        );
+        return SendAsync(toEmail, subject, body);
+    }
+
+    public Task SendOrderShippedAsync(string toEmail, int orderId, string carrier, string trackingNumber, DateTime? estimatedDelivery)
+    {
+        var subject = "Your order has shipped! – D & J's Elevated Designs";
+
+        var carrierLower = carrier.ToLower();
+        var trackingUrl = carrierLower.Contains("fedex")
+            ? $"https://www.fedex.com/fedextrack/?trknbr={Uri.EscapeDataString(trackingNumber)}"
+            : carrierLower.Contains("ups")
+                ? $"https://www.ups.com/track?tracknum={Uri.EscapeDataString(trackingNumber)}"
+                : $"https://tools.usps.com/go/TrackConfirmAction?tLabels={Uri.EscapeDataString(trackingNumber)}";
+
+        var deliveryPara = estimatedDelivery.HasValue
+            ? $"Estimated delivery: <strong>{estimatedDelivery.Value:MMMM d, yyyy}</strong>"
+            : "Check the tracking link for the latest delivery estimate.";
+
+        var body = BuildSimple(
+            heading: "Your order is on its way! 🚚",
+            paragraphs: new[]
+            {
+                $"Great news — your order has shipped via <strong>{WebUtility.HtmlEncode(carrier)}</strong>.",
+                $"Tracking number: <strong>{WebUtility.HtmlEncode(trackingNumber)}</strong>",
+                deliveryPara
+            },
+            ctaText: "Track Your Package",
+            ctaUrl: trackingUrl
         );
         return SendAsync(toEmail, subject, body);
     }
@@ -199,14 +257,12 @@ public class SmtpEmailService : IEmailService
         </td></tr>
         <tr><td><p style=""margin:0;font-size:13px;color:#9ca3af;line-height:1.5;"">Approving confirms the proof looks correct and authorizes us to proceed to payment. To request changes or cancel, please log into your account or reply to this email.</p></td></tr>");
 
-    private string BuildBase(string heading, string intro, int orderId, List<EmailLineItem> items, decimal total, string? extra)
+    private string BuildBase(string heading, string intro, int orderId, List<EmailLineItem> items, decimal total, decimal shippingCost, string? extra)
     {
         var rows = new StringBuilder();
         foreach (var item in items)
         {
             var label = WebUtility.HtmlEncode(item.DisplayName ?? item.ProductName);
-            var addonTotal = item.Options.Sum(o => o.PriceModifier);
-            // Base line total = base price * qty (add-ons shown separately as per-unit)
             var lineTotal = item.IsTiered ? item.UnitPrice : item.UnitPrice * item.Quantity;
             var qtyCell = item.IsTiered ? $"qty {item.Quantity}" : $"{item.Quantity} x ${item.UnitPrice:F2}";
             rows.Append($@"
@@ -226,6 +282,13 @@ public class SmtpEmailService : IEmailService
             rows.Append(@"<tr><td colspan=""3"" style=""padding:0;border-bottom:1px solid #e5e7eb;""></td></tr>");
         }
 
+        // Shipping row (only shown when shippingCost > 0)
+        var shippingRow = shippingCost > 0 ? $@"
+                        <tr>
+                            <td colspan=""2"" style=""padding:8px 0 0 0;font-size:13px;color:#6b7280;"">Shipping</td>
+                            <td style=""padding:8px 0 0 0;font-size:13px;color:#374151;text-align:right;"">${shippingCost:F2}</td>
+                        </tr>" : "";
+
         return Wrap($@"
             <tr><td style=""padding:0 0 16px 0;""><h2 style=""margin:0;font-size:22px;font-weight:700;color:#111827;"">{heading}</h2></td></tr>
             <tr><td style=""padding:0 0 20px 0;""><p style=""margin:0;font-size:15px;color:#6b7280;line-height:1.6;"">{intro}</p></td></tr>
@@ -239,6 +302,7 @@ public class SmtpEmailService : IEmailService
                             <th style=""padding:6px 0;border-bottom:2px solid #e5e7eb;font-size:12px;color:#9ca3af;text-align:right;text-transform:uppercase;"">Price</th>
                         </tr>
                         {rows}
+                        {shippingRow}
                         <tr>
                             <td colspan=""2"" style=""padding:12px 0 0 0;font-size:15px;font-weight:700;color:#111827;"">Total</td>
                             <td style=""padding:12px 0 0 0;font-size:15px;font-weight:700;color:#7c3aed;text-align:right;"">${total:F2}</td>

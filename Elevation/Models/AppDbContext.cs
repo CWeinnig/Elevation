@@ -1,4 +1,5 @@
 ﻿namespace Elevation.Models;
+
 using Microsoft.EntityFrameworkCore;
 
 public class AppDbContext : DbContext
@@ -27,6 +28,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PriceTier>().Property(p => p.Price).HasPrecision(18, 2);
 
         modelBuilder.Entity<Order>().Property(o => o.TotalPrice).HasPrecision(18, 2);
+        modelBuilder.Entity<Order>().Property(o => o.ShippingCost).HasPrecision(18, 2);
         modelBuilder.Entity<OrderItem>().Property(oi => oi.UnitPrice).HasPrecision(18, 2);
         modelBuilder.Entity<OrderOption>().Property(oo => oo.PriceModifier).HasPrecision(18, 2);
 

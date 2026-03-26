@@ -1,3 +1,4 @@
+// /mnt/project/Program.cs
 using Elevation.Data;
 using Elevation.Models;
 using Elevation.Services;
@@ -20,10 +21,21 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Azure SQL — connection string key is "DefaultConnection" in appsettings.json
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+
+// Azure Blob Storage — connection string key is "AzureBlobStorage" in appsettings.json
+builder.Services.AddSingleton<IBlobService>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var connStr = config.GetConnectionString("AzureBlobStorage")
+                  ?? throw new InvalidOperationException("AzureBlobStorage connection string is missing.");
+    var container = config["Azure:BlobContainerName"] ?? "uploads";
+    return new AzureBlobService(connStr, container);
+});
 
 var app = builder.Build();
 
@@ -42,12 +54,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseDefaultFiles(); 
+app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseCors("AllowAll");
 app.MapControllers();
-
-
 app.MapFallbackToFile("index.html");
 
 app.Run();
