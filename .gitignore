@@ -5,3 +5,67 @@ riderModule.iml
 /_ReSharper.Caches/
 Elevation/appsettings.json
 Elevation/appsettings.json
+
+# ── Build output ──────────────────────────────────────────────────────────────
+bin/
+obj/
+out/
+publish/
+
+# ── .NET / ASP.NET Core ───────────────────────────────────────────────────────
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.rsuser
+*.dbmdl
+*.jfm
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Entity Framework migrations (keep the files, ignore the snapshot if desired)
+# Uncomment if you don't want to track migrations:
+# Migrations/
+
+# ── Secrets & config ──────────────────────────────────────────────────────────
+appsettings.Development.json
+appsettings.Production.json
+appsettings.Staging.json
+secrets.json
+*.pfx
+*.p12
+*.key
+*.pem
+
+# ── Uploaded files (runtime) ──────────────────────────────────────────────────
+wwwroot/uploads/
+
+# ── Node / frontend tooling (if ever added) ───────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+
+# ── Environment files ─────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Azure / deployment ────────────────────────────────────────────────────────
+.azure/
+*.PublishSettings
