@@ -28,7 +28,9 @@ public class FilesController : ControllerBase
 
     // ── POST api/Files/upload ─────────────────────────────────────────────────
     [HttpPost("upload")]
-    public async Task<IActionResult> UploadFile(IFormFile file, [FromForm] int? orderId)
+    [RequestSizeLimit(MaxFileSizeBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxFileSizeBytes)]
+      public async Task<IActionResult> UploadFile(IFormFile file, [FromForm] int? orderId)
     {
         if (file == null || file.Length == 0)
             return BadRequest("No file received.");
@@ -39,6 +41,19 @@ public class FilesController : ControllerBase
         var ext = Path.GetExtension(file.FileName);
         if (!AllowedExtensions.Contains(ext))
             return BadRequest($"File type '{ext}' is not allowed. Accepted: {string.Join(", ", AllowedExtensions)}");
+       
+        var allowedMimeTypes = new HashSet<string>
+     {
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/tiff",
+        "application/postscript",
+        "image/svg+xml"
+     };
+
+        if (!allowedMimeTypes.Contains(file.ContentType))
+        return BadRequest($"MIME type '{file.ContentType}' is not allowed.");
 
         if (orderId.HasValue && !await _context.Orders.AnyAsync(o => o.Id == orderId.Value))
             return BadRequest("Invalid Order ID.");
