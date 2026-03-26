@@ -3,6 +3,9 @@ const API_BASE = 'http://localhost:5249';
 const SQUARE_APP_ID = 'sandbox-sq0idb-BwePK0oD1PR0SnDJLs3w5g';
 const SQUARE_LOCATION_ID = 'L77QZ2Q33YZSD';
 
+// FIX #4 — single top-level constant for flat shipping rate
+const SHIPPING_COST = 8.99;
+
 let products = [];
 let cart = [];
 let currentUser = null;   // { id, name, email, role, createdAt }
@@ -16,6 +19,7 @@ let adminActiveId = null;
 let adminIsEditMode = false;
 let adminDeleteTargetId = null;
 let adminActiveTab = 'products';
+let adminActiveOrderId = null;
 
 // Payment-link return state
 let pendingPayOrderId = null;
@@ -36,6 +40,14 @@ function adminHeaders() {
         'X-User-Id': currentUser ? String(currentUser.id) : '',
         'X-User-Role': currentUser ? currentUser.role : ''
     };
+}
+
+// Ensure date strings from the backend are treated as UTC before formatting
+function parseDate(str) {
+    if (!str) return new Date(str);
+    // If the string has no timezone indicator, append Z to treat as UTC
+    const s = String(str);
+    return new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z');
 }
 
 function escHtml(str) {
@@ -75,6 +87,7 @@ function getStatusColor(status) {
         'AwaitingPayment': { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b' },
         'Paid': { bg: 'rgba(16,185,129,0.12)', text: '#10b981' },
         'Completed': { bg: 'rgba(16,185,129,0.15)', text: '#059669' },
+        'Shipped': { bg: 'rgba(6,182,212,0.15)', text: '#0891b2' },
         'Cancelled': { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
         'RevisionRequested': { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b' },
         'CancellationRequested': { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
@@ -90,6 +103,7 @@ function formatStatus(status) {
         'ProofApproved': 'Proof Approved',
         'AwaitingPayment': 'Awaiting Payment',
         'Paid': 'Paid',
+        'Shipped': 'Shipped',
         'Completed': 'Completed',
         'Cancelled': 'Cancelled',
         'RevisionRequested': 'Revision Requested',
@@ -136,7 +150,7 @@ async function init() {
 function renderProducts() {
     const grid = document.getElementById('productsGrid');
     const query = document.getElementById('productSearch')?.value.trim().toLowerCase() || '';
-    const filtered = query ? products.filter(p => p.name.toLowerCase().startsWith(query)) : products;
+    const filtered = query ? products.filter(p => p.name.toLowerCase().includes(query)) : products;
     if (filtered.length === 0) {
         grid.innerHTML = '<div style="color:var(--muted);padding:2rem;grid-column:1/-1;">No products found.</div>';
         return;
@@ -160,7 +174,6 @@ function renderProducts() {
 
 // ── Product Detail Modal ───────────────────────────────────────────────────────
 
-// Track selected options (set of productOptionId or index for options without id)
 let pdSelectedOptions = new Set();
 let pdCurrentMode = 'quote';
 
@@ -171,7 +184,7 @@ function openProductDetail(productId) {
     pdCurrentFile = null;
     pdCurrentFileData = null;
     pdSelectedOptions = new Set();
-    pdOptionModifiers = {}; // reset add-on selections
+    pdOptionModifiers = {};
 
     const tiers = (product.priceTiers || []).slice().sort((a, b) => a.minQty - b.minQty);
     pdCurrentQty = tiers.length ? tiers[0].minQty : 1;
@@ -179,7 +192,6 @@ function openProductDetail(productId) {
     document.getElementById('pdName').textContent = product.name;
     document.getElementById('pdDesc').textContent = product.description || 'Professional printing and design service.';
 
-    // Update header price tag
     const headerPrice = document.getElementById('pdPrice');
     if (headerPrice) {
         headerPrice.textContent = tiers.length
@@ -187,11 +199,9 @@ function openProductDetail(productId) {
             : `$${product.basePrice.toFixed(2)} per unit`;
     }
 
-    // Clear the old price section — no tier table, dropdown handles it
     const priceEl = document.getElementById('pdPriceSection');
     priceEl.innerHTML = '';
 
-    // Qty control — styled custom dropdown for tiers, +/- stepper for flat
     const qtySection = document.getElementById('pdQtySection');
     if (tiers.length) {
         qtySection.innerHTML = `
@@ -222,7 +232,6 @@ function openProductDetail(productId) {
             </div>`;
     }
 
-    // Add-on options
     const optionsSection = document.getElementById('pdOptionsSection');
     const opts = product.options || [];
     if (opts.length) {
@@ -279,7 +288,7 @@ function pdGetActiveTierPrice() {
     return price;
 }
 
-let pdOptionModifiers = {}; // id → priceModifier
+let pdOptionModifiers = {};
 
 function pdToggleOption(id, modifier, checked) {
     if (checked) pdOptionModifiers[id] = modifier;
@@ -295,10 +304,8 @@ function pdUpdateTotal() {
     const addons = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
     let total;
     if (tiers.length) {
-        // Tier price is the flat batch total — addons are per-order on top
         total = pdGetActiveTierPrice() + addons;
     } else {
-        // (base + addons) × qty
         total = (pdCurrentProduct.basePrice + addons) * pdCurrentQty;
     }
     el.textContent = `$${total.toFixed(2)}`;
@@ -335,7 +342,6 @@ async function pdSubmitQuote() {
     if (!email) { showToast('Please enter your email.'); return; }
     if (!notes) { showToast('Please describe your design — this helps us prepare your quote.'); return; }
 
-    // Collect selected add-on option IDs from pdOptionModifiers
     const selectedOptionIds = Object.keys(pdOptionModifiers).map(id => ({ productOptionId: parseInt(id) }));
 
     const btn = document.getElementById('pdQuoteBtn');
@@ -370,7 +376,6 @@ async function pdSubmitQuote() {
 
         const addonTotal = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
         const baseTotal = pdCurrentProduct.priceTiers?.length ? pdGetActiveTierPrice() : pdCurrentProduct.basePrice * pdCurrentQty;
-        // Save to local history
         submittedQuotes.unshift({
             id: Date.now(),
             productId: pdCurrentProduct.id,
@@ -415,7 +420,6 @@ async function syncQuotesFromServer() {
         const res = await fetch(`${API_BASE}/api/Orders/user/${currentUser.id}`);
         if (!res.ok) return;
         const orders = await res.json();
-        // Rebuild submittedQuotes from real server orders (quote requests only)
         submittedQuotes = orders
             .filter(o => o.isQuoteRequest)
             .map(o => ({
@@ -431,7 +435,7 @@ async function syncQuotesFromServer() {
                 status: o.status
             }));
         saveQuotesToStorage();
-    } catch { /* silently fail — stale local data is fine as fallback */ }
+    } catch { }
     updateQuotesBadge();
 }
 
@@ -464,7 +468,7 @@ function renderQuotesHistory() {
         return;
     }
     list.innerHTML = submittedQuotes.map((q, i) => {
-        const date = new Date(q.submittedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+        const date = parseDate(q.submittedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
         const sc = getStatusColor(q.status);
         const canApprove = q.status === 'ProofSent';
         return `<div class="qh-card" style="animation-delay:${i * 0.04}s">
@@ -540,8 +544,6 @@ function pdAddToCart() {
         const opt = (pdCurrentProduct.options || []).find(o => o.id == id);
         return opt ? { productOptionId: opt.id, optionName: opt.optionName, optionValue: opt.optionValue, priceModifier: mod } : null;
     }).filter(Boolean);
-    // For tiered products: cart qty = 1, basePrice = tier total (the price is for the whole batch)
-    // For flat products: cart qty = pdCurrentQty, basePrice = unit price
     const isTiered = tiers.length > 0;
     addToCart({
         productId: pdCurrentProduct.id,
@@ -580,7 +582,6 @@ function renderCart() {
         const unitPrice = item.basePrice + addonTotal;
         const lineTotal = (unitPrice * item.qty).toFixed(2);
 
-        // Option pills — only show options with a price modifier label, else just the value
         const optionPills = (item.selectedOptions || []).map(o =>
             `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:20px;padding:2px 9px;font-size:0.75rem;color:var(--accent2);font-weight:600;white-space:nowrap;">
                 ${escHtml(o.optionValue)}${o.priceModifier ? `<span style="opacity:0.7;">+$${Number(o.priceModifier).toFixed(2)}</span>` : ''}
@@ -594,7 +595,7 @@ function renderCart() {
                     <div style="font-size:0.78rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(item.imageName || 'Design file')}</div>
                     <div style="font-size:0.72rem;color:var(--muted);">Attached design file</div>
                 </div>
-                <button onclick="removeItemImage(${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.75rem;font-family:'DM Sans',sans-serif;flex-shrink:0;padding:2px 4px;">✕ Remove</button>
+
               </div>`
             : `<label for="img-input-${i}" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1.5px dashed var(--border);border-radius:8px;font-size:0.78rem;font-family:'DM Sans',sans-serif;color:var(--muted);cursor:pointer;transition:border-color 0.15s,color 0.15s;" onmouseover="this.style.borderColor='#7c3aed';this.style.color='#7c3aed'" onmouseout="this.style.borderColor='';this.style.color=''">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -604,20 +605,15 @@ function renderCart() {
 
         return `
             <div class="quote-item" style="padding:1rem 1rem 0.85rem;">
-                <!-- Row 1: name + remove -->
                 <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
                     <div style="font-weight:700;font-size:0.95rem;line-height:1.3;">${escHtml(item.name)}</div>
                     <button onclick="removeItem(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;line-height:1;padding:0;flex-shrink:0;margin-top:1px;" title="Remove item">✕</button>
                 </div>
-                <!-- Row 2: base price label -->
                 <div style="font-size:0.8rem;color:var(--muted);margin-bottom:${optionPills ? '8px' : '10px'};">
                     $${item.basePrice.toFixed(2)} base${addonTotal > 0 ? ` + $${addonTotal.toFixed(2)} add-ons` : ''}
                 </div>
-                <!-- Row 3: option pills (if any) -->
                 ${optionPills ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${optionPills}</div>` : ''}
-                <!-- Row 4: attached image or upload prompt -->
                 <div style="margin-bottom:10px;">${imageSection}</div>
-                <!-- Row 5: qty + line total -->
                 <div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span style="font-size:0.82rem;color:var(--muted);font-weight:500;">Qty</span>
@@ -682,10 +678,8 @@ async function openRequestModal() {
     if (currentUser) {
         document.getElementById('contactName').value = currentUser.name;
         document.getElementById('contactEmail').value = currentUser.email;
-        // Pre-fill shipping name from account name
         document.getElementById('shipName').value = currentUser.name;
     }
-    // Mirror contact name → ship name as user types
     const contactNameEl = document.getElementById('contactName');
     const shipNameEl = document.getElementById('shipName');
     contactNameEl.oninput = () => {
@@ -707,6 +701,7 @@ function updateCheckoutMode() {
 }
 
 function renderModalOrderDetails() {
+    // Uses the top-level SHIPPING_COST constant (Fix #4)
     document.getElementById('modalOrderDetails').innerHTML = cart.map(item => {
         const addonTotal = (item.selectedOptions || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
         const lineTotal = (item.basePrice + addonTotal) * item.qty;
@@ -731,15 +726,14 @@ function renderModalOrderDetails() {
         </div>`;
     }).join('') + (() => {
         const subtotal = getCartSubtotal();
-        const shipping = 8.99;
-        const total = subtotal + shipping;
+        const total = subtotal + SHIPPING_COST;
         return `
         <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:6px;">
             <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);">
                 <span>Subtotal</span><span>$${subtotal.toFixed(2)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);">
-                <span>Shipping (flat rate)</span><span>$${shipping.toFixed(2)}</span>
+                <span>Shipping (flat rate)</span><span>$${SHIPPING_COST.toFixed(2)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding-top:6px;border-top:1px solid var(--border);">
                 <span>Total</span><span style="color:var(--accent);">$${total.toFixed(2)}</span>
@@ -793,7 +787,7 @@ async function submitQuote() {
     if (isQuote && !designNotes) { showToast('Please describe your design needs.'); return; }
     if (!isQuote && !squareCard) { showToast('Payment form not ready.'); return; }
 
-    const SHIPPING_COST = 8.99;
+    // Uses top-level SHIPPING_COST constant (Fix #4)
     const grandTotal = getCartSubtotal() + SHIPPING_COST;
 
     const btn = document.getElementById('submitOrderBtn');
@@ -850,7 +844,7 @@ async function submitQuote() {
         });
 
         if (!orderRes.ok) { showToast(`Order failed: ${await orderRes.text()}`); return; }
-        const order = await orderRes.json();
+        await orderRes.json();
         closeRequestModal(); clearCart(); updateBadge();
 
         if (isQuote) {
@@ -885,12 +879,6 @@ async function checkPaymentReturn() {
         return;
     }
 
-    if (params.get('proofResult') === 'invalid') {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        showToast('This proof approval link is invalid or has already been used. Please check your account for the latest status.');
-        return;
-    }
-
     const payOrderId = params.get('payOrder');
     const payToken = params.get('token');
     if (payOrderId && payToken) {
@@ -909,25 +897,55 @@ async function checkPaymentReturn() {
     }
 }
 
+// FIX #2 — shipping cost line + correct total (items subtotal + shipping)
 function openProofPaymentModal(info) {
     document.getElementById('proofPayEmail').textContent = info.email;
-    // proofPayTotal removed from HTML
+
+    // Clear shipping address fields every time the modal opens
+    ['proofShipName', 'proofShipStreet', 'proofShipCity', 'proofShipState', 'proofShipZip'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    // Compute subtotal from items (same logic as checkout modal)
+    const itemsSubtotal = (info.items || []).reduce((sum, i) => {
+        const addonTotal = (i.options || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
+        const lineTotal = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
+        return sum + lineTotal + addonTotal;
+    }, 0);
+    const grandTotal = itemsSubtotal + SHIPPING_COST;
+
+    // Store for submitProofPayment to charge Square correctly
+    if (pendingPayInfo) pendingPayInfo._grandTotal = grandTotal;
+
     const itemsEl = document.getElementById('proofPayItems');
     itemsEl.innerHTML = (info.items || []).map(i => {
-        const addonTotal = (i.options || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
-        const baseLineTotal = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
         const optionLines = (i.options || []).filter(o => o.priceModifier !== 0).map(o =>
             `<div style="font-size:12px;color:var(--muted);margin-top:2px;">+ ${o.optionValue} <span style="color:var(--accent2);">+$${Number(o.priceModifier).toFixed(2)} each</span></div>`
         ).join('');
         const qtyLine = i.isTiered ? `Qty: ${i.quantity}` : `${i.quantity} × $${i.unitPrice.toFixed(2)}`;
-        return `<div class="order-detail-card">
-            <div>
-                <div style="font-weight:700;">${i.productName}</div>
+        const lineTotal = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
+        return `<div class="order-detail-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;">
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:0.9rem;">${i.productName}</div>
                 <div class="order-detail-qty">${qtyLine}</div>
                 ${optionLines}
             </div>
+            <div style="font-weight:700;color:var(--accent);white-space:nowrap;">$${lineTotal.toFixed(2)}</div>
         </div>`;
-    }).join('') + `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:12px 4px 4px;border-top:1px solid var(--border);margin-top:8px;"><span>Total</span><span style="color:var(--accent);">$${Number(info.totalPrice).toFixed(2)}</span></div>`;
+    }).join('') + `
+        <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);">
+                <span>Subtotal</span><span>$${itemsSubtotal.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);">
+                <span>Shipping (flat rate)</span><span>$${SHIPPING_COST.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding-top:6px;border-top:1px solid var(--border);">
+                <span>Total</span><span style="color:var(--accent);">$${grandTotal.toFixed(2)}</span>
+            </div>
+        </div>`;
+
     document.getElementById('proofPayModal').classList.add('show');
     document.body.style.overflow = 'hidden';
     initProofPaySquare();
@@ -964,8 +982,22 @@ function closeProofPayModal() {
     if (window._proofPayCard) { window._proofPayCard.destroy(); window._proofPayCard = null; }
 }
 
+// FIX #1 — collect and send shipping address fields from proof payment modal
 async function submitProofPayment() {
     if (!window._proofPayCard) { showToast('Payment form not ready.'); return; }
+
+    const shipName = document.getElementById('proofShipName')?.value.trim() || '';
+    const shipStreet = document.getElementById('proofShipStreet')?.value.trim() || '';
+    const shipCity = document.getElementById('proofShipCity')?.value.trim() || '';
+    const shipState = document.getElementById('proofShipState')?.value.trim() || '';
+    const shipZip = document.getElementById('proofShipZip')?.value.trim() || '';
+
+    if (!shipName) { showToast('Please enter the shipping name.'); return; }
+    if (!shipStreet) { showToast('Please enter a shipping address.'); return; }
+    if (!shipCity) { showToast('Please enter the city.'); return; }
+    if (!shipState) { showToast('Please enter the state.'); return; }
+    if (!shipZip) { showToast('Please enter the ZIP code.'); return; }
+
     const btn = document.getElementById('proofPayBtn');
     btn.disabled = true; btn.textContent = 'Processing...';
     try {
@@ -974,7 +1006,10 @@ async function submitProofPayment() {
             showToast(`Payment error: ${tokenResult.errors?.map(e => e.message).join(', ') || 'Card error.'}`);
             return;
         }
-        const amountCents = Math.round(Number(pendingPayInfo.totalPrice) * 100);
+        // Use _grandTotal (items + shipping) set by openProofPaymentModal; fall back to
+        // totalPrice + SHIPPING_COST if the modal somehow wasn't used (belt-and-suspenders).
+        const grandTotal = pendingPayInfo._grandTotal ?? (Number(pendingPayInfo.totalPrice) + SHIPPING_COST);
+        const amountCents = Math.round(grandTotal * 100);
         const payRes = await fetch(`${API_BASE}/api/Payments/process`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sourceId: tokenResult.token, amountCents })
@@ -984,7 +1019,15 @@ async function submitProofPayment() {
 
         const completeRes = await fetch(`${API_BASE}/api/Orders/${pendingPayOrderId}/complete-payment`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentToken: pendingPayToken, squarePaymentId: payment.paymentId })
+            body: JSON.stringify({
+                paymentToken: pendingPayToken,
+                squarePaymentId: payment.paymentId,
+                shipToName: shipName,
+                shipToStreet: shipStreet,
+                shipToCity: shipCity,
+                shipToState: shipState,
+                shipToZip: shipZip
+            })
         });
         if (!completeRes.ok) { showToast('Could not record payment. Please contact us.'); return; }
 
@@ -1027,11 +1070,6 @@ function switchToSignIn() {
     document.getElementById('createAccountForm').style.display = 'none';
 }
 
-/**
- * Unified login — works for both customers and admins.
- * The server returns { role: "Admin" | "Customer" } as part of UserDto.
- * If role is Admin, we show the admin nav button automatically.
- */
 async function handleSignIn() {
     const email = document.getElementById('signInEmail').value.trim();
     const password = document.getElementById('signInPassword').value;
@@ -1060,7 +1098,6 @@ async function handleSignIn() {
         updateNavAfterLogin();
         loadCart();
         updateBadge();
-        // Sync View Quotes panel from server orders so it survives logout/login
         await syncQuotesFromServer();
         if (isAdmin()) {
             showToast(`Welcome back, ${currentUser.name}! Admin access granted.`);
@@ -1071,7 +1108,6 @@ async function handleSignIn() {
 }
 
 async function showEmailNotConfirmedBanner(email) {
-    // Replace the sign-in form content with a clear message + resend button
     const form = document.getElementById('signInForm');
     form.innerHTML = `
         <div style="text-align:center;padding:8px 0 16px;">
@@ -1144,7 +1180,6 @@ function updateNavAfterLogin() {
     const btn = document.getElementById('authNavBtn');
     const textNode = [...btn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
     if (textNode) textNode.textContent = ` ${currentUser.name}`;
-    // Show Admin nav button if role is Admin
     const adminBtn = document.getElementById('adminNavBtn');
     adminBtn.style.display = isAdmin() ? 'flex' : 'none';
 }
@@ -1157,7 +1192,6 @@ function loadSessionFromStorage() {
             updateNavAfterLogin();
             loadCart();
             updateBadge();
-            // Refresh quotes from server in the background on page load
             syncQuotesFromServer();
         }
     } catch { }
@@ -1188,9 +1222,9 @@ async function openAccount() {
 function closeAccount() { document.getElementById('accountModal').classList.remove('show'); document.body.style.overflow = ''; }
 function closeAccountIfOutside(e) { }
 
-// Lookup map so Review Proof button can find proof files without inline JSON
 const _accountProofFilesMap = {};
 
+// FIX #3 — show shipping address block and tracking card when status is Shipped
 function renderAccountOrders(orders) {
     const list = document.getElementById('accountOrdersList');
     if (!orders || orders.length === 0) { list.innerHTML = '<div style="color:var(--muted);padding:1rem;">No orders to show.</div>'; return; }
@@ -1199,6 +1233,43 @@ function renderAccountOrders(orders) {
         const statusColor = getStatusColor(o.status);
         const proofFiles = (o.uploadedFiles || []).filter(f => f.originalFileName?.startsWith('PROOF_'));
         _accountProofFilesMap[o.id] = proofFiles;
+
+        // Shipping address block (show when address is on file)
+        const hasAddress = o.shipToStreet && o.shipToStreet.trim();
+        const shippingAddressHtml = hasAddress ? `
+            <div style="margin-top:0.5rem;font-size:0.82rem;color:var(--muted);">
+                <span style="font-weight:600;color:var(--text);">Ship to:</span>
+                ${o.shipToName ? escHtml(o.shipToName) + ' — ' : ''}${escHtml(o.shipToStreet)}, ${escHtml(o.shipToCity)}, ${escHtml(o.shipToState)} ${escHtml(o.shipToZip)}
+            </div>` : '';
+
+        // Tracking card — shown when status is Shipped and tracking info exists
+        const trackingHtml = (o.status === 'Shipped' && o.trackingNumber) ? (() => {
+            const _carrier = (o.shippingCarrier || '').toLowerCase();
+            const trackingUrl = _carrier.includes('fedex')
+                ? `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(o.trackingNumber)}`
+                : _carrier.includes('ups')
+                    ? `https://www.ups.com/track?tracknum=${encodeURIComponent(o.trackingNumber)}`
+                    : `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(o.trackingNumber)}`;
+            const eta = o.estimatedDelivery
+                ? `Est. delivery: <strong>${parseDate(o.estimatedDelivery).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</strong>`
+                : '';
+            return `
+            <div style="margin-top:0.75rem;padding:0.65rem 0.85rem;background:rgba(6,182,212,0.08);border-radius:9px;border:1px solid rgba(6,182,212,0.25);">
+                <div style="font-size:0.78rem;font-weight:700;color:#0891b2;margin-bottom:5px;">🚚 Your order has shipped!</div>
+                <div style="font-size:0.82rem;color:var(--text);margin-bottom:2px;">
+                    <span style="color:var(--muted);">Carrier:</span> <strong>${escHtml(o.shippingCarrier || '—')}</strong>
+                </div>
+                <div style="font-size:0.82rem;color:var(--text);margin-bottom:${eta ? '4px' : '0'};">
+                    <span style="color:var(--muted);">Tracking:</span> <strong>${escHtml(o.trackingNumber)}</strong>
+                </div>
+                ${eta ? `<div style="font-size:0.82rem;color:var(--muted);">${eta}</div>` : ''}
+                <a href="${trackingUrl}" target="_blank" rel="noopener"
+                   style="display:inline-block;margin-top:8px;padding:5px 14px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.8rem;font-weight:600;text-decoration:none;">
+                    Track Package →
+                </a>
+            </div>`;
+        })() : '';
+
         const proofSection = proofFiles.length > 0 ? `
             <div style="margin-top:0.75rem;padding:0.6rem 0.75rem;background:rgba(6,182,212,0.08);border-radius:8px;border:1px solid rgba(6,182,212,0.2);">
                 <div style="font-size:0.78rem;font-weight:700;color:var(--accent);margin-bottom:6px;">Proofs Ready for Review</div>
@@ -1206,12 +1277,13 @@ function renderAccountOrders(orders) {
                 ${o.status === 'ProofSent' ? `<button onclick="openProofReviewModal(${o.id}, null)" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Review Proof</button>` : ''}
                 ${o.status === 'AwaitingPayment' ? `<button onclick="reopenPaymentModal(${o.id}, '${o.paymentToken}')" style="margin-top:8px;padding:6px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Complete Payment</button>` : ''}
             </div>` : '';
+
         return `
         <div class="order-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
                 <div>
                     <div style="font-weight:700;">${isQuote ? 'Quote Request' : 'Order'}</div>
-                    <div style="font-size:0.85rem;color:var(--muted);">${new Date(o.createdAt).toLocaleString()}</div>
+                    <div style="font-size:0.85rem;color:var(--muted);">${parseDate(o.createdAt).toLocaleString()}</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span style="font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusColor.bg};color:${statusColor.text}">${formatStatus(o.status)}</span>
@@ -1219,14 +1291,15 @@ function renderAccountOrders(orders) {
                 </div>
             </div>
             <div style="margin-top:0.5rem;font-size:0.9rem;">${o.items.map(it => {
-            const addonTotal = (it.options || []).reduce((s, op) => s + (op.priceModifier || 0), 0);
-            const baseLineTotal = it.isTiered ? it.unitPrice : it.unitPrice * it.quantity;
             const optionLines = (it.options || []).filter(op => op.priceModifier !== 0).map(op =>
                 `<div style="font-size:0.8rem;color:var(--muted);padding-left:8px;">+ ${escHtml(op.optionValue)} <span style="color:var(--accent2);">+$${op.priceModifier.toFixed(2)} each</span></div>`
             ).join('');
+            const baseLineTotal = it.isTiered ? it.unitPrice : it.unitPrice * it.quantity;
             return `<div style="margin-bottom:6px;"><div>${it.quantity}x ${escHtml(it.productName)} <span style="color:var(--muted);">— $${baseLineTotal.toFixed(2)}</span></div>${optionLines}</div>`;
         }).join('')}</div>
             ${o.designNotes ? `<div style="margin-top:6px;font-size:0.8rem;color:var(--muted);font-style:italic;">Notes: ${escHtml(o.designNotes)}</div>` : ''}
+            ${shippingAddressHtml}
+            ${trackingHtml}
             ${proofSection}
         </div>`;
     }).join('');
@@ -1235,7 +1308,7 @@ function renderAccountOrders(orders) {
 // ── Proof Review Modal ───────────────────────────────────────────────────────
 
 let proofReviewOrderId = null;
-let proofReviewToken = null; // for email-link flow
+let proofReviewToken = null;
 
 function openProofReviewModal(orderId, token) {
     closeAccount();
@@ -1297,7 +1370,6 @@ async function submitProofFeedback(action) {
         if (action === 'approve') {
             showToast('Proof approved! Check your email for the payment link. ✓');
             if (data.paymentUrl) {
-                // Redirect to payment flow
                 const params = new URLSearchParams(data.paymentUrl.replace('/?', ''));
                 const payOrder = params.get('payOrder');
                 const token = params.get('token');
@@ -1375,6 +1447,7 @@ function closeAdminPanel() { document.getElementById('adminOverlay').classList.r
 function closeAdminIfOutside(e) { }
 
 function switchAdminTab(tab) {
+    const prev = adminActiveTab;
     adminActiveTab = tab;
     ['products', 'orders', 'files'].forEach(t => {
         const btn = document.getElementById(`adminTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
@@ -1383,8 +1456,22 @@ function switchAdminTab(tab) {
     document.getElementById('adminProductsPane').style.display = tab === 'products' ? 'grid' : 'none';
     document.getElementById('adminOrdersPane').style.display = tab === 'orders' ? 'flex' : 'none';
     document.getElementById('adminFilesPane').style.display = tab === 'files' ? 'block' : 'none';
-    if (tab === 'products') adminLoadProducts();
-    if (tab === 'orders') adminLoadOrders();
+    if (tab === 'products') {
+        if (adminProducts.length === 0) {
+            adminLoadProducts().then(() => { if (adminActiveId) adminStartEdit(adminActiveId); });
+        } else {
+            adminRenderList();
+            if (adminActiveId) adminStartEdit(adminActiveId);
+        }
+    }
+    if (tab === 'orders') {
+        if (adminOrders.length === 0) {
+            adminLoadOrders().then(() => { if (adminActiveOrderId) adminSelectOrder(adminActiveOrderId); });
+        } else {
+            adminRenderOrders();
+            if (adminActiveOrderId) adminSelectOrder(adminActiveOrderId);
+        }
+    }
     if (tab === 'files') adminLoadFiles();
 }
 
@@ -1397,7 +1484,6 @@ async function adminLoadProducts() {
         const res = await fetch(`${API_BASE}/api/Products/all`, {
             headers: { 'X-User-Id': String(currentUser?.id), 'X-User-Role': currentUser?.role || '' }
         });
-        // Fall back to public endpoint if admin-specific not available
         const r = res.ok ? res : await fetch(`${API_BASE}/api/Products`);
         if (!r.ok) throw new Error();
         adminProducts = await r.json();
@@ -1408,7 +1494,7 @@ async function adminLoadProducts() {
 function adminRenderList() {
     const list = document.getElementById('adminProductList');
     const query = document.getElementById('adminProductSearch')?.value.trim().toLowerCase() || '';
-    const filtered = query ? adminProducts.filter(p => p.name.toLowerCase().startsWith(query)) : adminProducts;
+    const filtered = query ? adminProducts.filter(p => p.name.toLowerCase().includes(query)) : adminProducts;
     document.getElementById('adminCountBadge').textContent = adminProducts.length;
     if (filtered.length === 0) { list.innerHTML = '<div style="padding:2rem;color:var(--muted);text-align:center;">No products found.</div>'; return; }
     list.innerHTML = filtered.map((p, i) => `
@@ -1667,8 +1753,15 @@ function adminRenderOrders() {
 
     container.innerHTML = `
         <div class="admin-orders-layout">
-            <div class="admin-orders-list" id="adminOrdersList">
-                ${adminOrders.map(o => adminOrderCard(o)).join('')}
+            <div class="admin-orders-list" id="adminOrdersList" style="display:flex;flex-direction:column;gap:0;">
+                <div style="padding:10px 10px 6px;flex-shrink:0;">
+                    <input id="adminOrderSearch" type="text" placeholder="Search by name, email, order #…"
+                        oninput="adminFilterOrders()"
+                        style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;box-sizing:border-box;" />
+                </div>
+                <div id="adminOrderCards" class="admin-product-list" style="display:flex;flex-direction:column;gap:6px;padding:0 10px 10px;">
+                    ${adminOrders.map(o => adminOrderCard(o)).join('')}
+                </div>
             </div>
             <div class="admin-order-detail" id="adminOrderDetail">
                 <div class="admin-placeholder" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">
@@ -1677,6 +1770,29 @@ function adminRenderOrders() {
                 </div>
             </div>
         </div>`;
+}
+
+function adminFilterOrders() {
+    const query = document.getElementById('adminOrderSearch')?.value.trim().toLowerCase() || '';
+    const cards = document.getElementById('adminOrderCards');
+    if (!cards) return;
+    const filtered = query ? adminOrders.filter(o => {
+        const name = (o.customerName || '').toLowerCase();
+        const email = (o.customerEmail || o.guestEmail || '').toLowerCase();
+        const id = String(o.id);
+        return name.includes(query) || email.includes(query) || id.includes(query);
+    }) : adminOrders;
+    if (filtered.length === 0) {
+        cards.innerHTML = '<div style="padding:1.5rem;color:var(--muted);text-align:center;font-size:13px;">No orders match your search.</div>';
+        return;
+    }
+    cards.innerHTML = filtered.map(o => adminOrderCard(o)).join('');
+    // Re-highlight active order if still in results
+    if (adminActiveOrderId) {
+        cards.querySelectorAll('.admin-order-card').forEach(c => {
+            c.classList.toggle('active', c.textContent.includes(`#${adminActiveOrderId}`));
+        });
+    }
 }
 
 function adminOrderCard(o) {
@@ -1692,18 +1808,20 @@ function adminOrderCard(o) {
                 </div>
                 <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;background:${sc.bg};color:${sc.text}">${formatStatus(o.status)}</span>
             </div>
-            <div style="font-size:12px;color:var(--muted);margin-top:4px;">${new Date(o.createdAt).toLocaleDateString()}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;">${parseDate(o.createdAt).toLocaleDateString()}</div>
             <div style="font-size:13px;font-weight:700;color:var(--accent);margin-top:2px;">$${o.totalPrice.toFixed(2)}</div>
         </div>`;
 }
 
 async function adminSelectOrder(id) {
+    adminActiveOrderId = id;
     const order = adminOrders.find(o => o.id === id);
     if (!order) return;
 
-    document.querySelectorAll('.admin-order-card').forEach(c => c.classList.remove('active'));
-    const cards = document.querySelectorAll('.admin-order-card');
-    cards.forEach(c => { if (c.textContent.includes(`#${id}`)) c.classList.add('active'); });
+    const cardContainer = document.getElementById('adminOrderCards') || document;
+    cardContainer.querySelectorAll('.admin-order-card').forEach(c => {
+        c.classList.toggle('active', c.textContent.includes(`#${id}`));
+    });
 
     const sc = getStatusColor(order.status);
     const proofFiles = (order.uploadedFiles || []).filter(f => f.originalFileName?.startsWith('PROOF_'));
@@ -1718,7 +1836,7 @@ async function adminSelectOrder(id) {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px;">
                 <div>
                     <div style="font-size:18px;font-weight:700;">${order.isQuoteRequest ? 'Quote' : 'Order'} #${order.id}</div>
-                    <div style="font-size:12px;color:var(--muted);margin-top:2px;">${new Date(order.createdAt).toLocaleString()}</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px;">${parseDate(order.createdAt).toLocaleString()}</div>
                 </div>
                 <span style="font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;background:${sc.bg};color:${sc.text}">${formatStatus(order.status)}</span>
             </div>
@@ -1772,7 +1890,7 @@ async function adminSelectOrder(id) {
                     <div style="margin-top:8px;padding:8px 10px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);font-size:13px;">
                         <span style="font-weight:600;color:#059669;">Shipped</span> via ${escHtml(order.shippingCarrier)} —
                         <strong>${escHtml(order.trackingNumber)}</strong>
-                        ${order.estimatedDelivery ? `<span style="color:var(--muted);"> · Est. ${new Date(order.estimatedDelivery).toLocaleDateString()}</span>` : ''}
+                        ${order.estimatedDelivery ? `<span style="color:var(--muted);"> · Est. ${parseDate(order.estimatedDelivery).toLocaleDateString()}</span>` : ''}
                     </div>
                 ` : (order.shipToStreet && ['Paid', 'Completed'].includes(order.status) ? `
                     <div style="margin-top:10px;">
@@ -1905,7 +2023,6 @@ function adminRenderFiles(files) {
         return;
     }
 
-    // Group files by orderId
     const grouped = {};
     files.forEach(f => {
         const key = f.orderId ? `Order #${f.orderId}` : 'Unattached';
@@ -1929,7 +2046,7 @@ function adminRenderFiles(files) {
                             <span style="font-size:18px;">${icon}</span>
                             <div style="flex:1;min-width:0;">
                                 <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(displayName)}</div>
-                                <div style="font-size:11px;color:var(--muted);">${new Date(f.uploadedAt).toLocaleString()}</div>
+                                <div style="font-size:11px;color:var(--muted);">${parseDate(f.uploadedAt).toLocaleString()}</div>
                             </div>
                             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${tagColor};color:${tagText};white-space:nowrap;">${tagLabel}</span>
                             <a href="${API_BASE}/api/Files/${f.id}/download" download="${escHtml(displayName)}" style="padding:6px 12px;background:var(--accent2);color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">⬇ Download</a>

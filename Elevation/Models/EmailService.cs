@@ -213,9 +213,12 @@ public class SmtpEmailService : IEmailService
     {
         var subject = "Your order has shipped! – D & J's Elevated Designs";
 
-        var trackingUrl = carrier.ToLower().Contains("fedex")
+        var carrierLower = carrier.ToLower();
+        var trackingUrl = carrierLower.Contains("fedex")
             ? $"https://www.fedex.com/fedextrack/?trknbr={Uri.EscapeDataString(trackingNumber)}"
-            : $"https://tools.usps.com/go/TrackConfirmAction?tLabels={Uri.EscapeDataString(trackingNumber)}";
+            : carrierLower.Contains("ups")
+                ? $"https://www.ups.com/track?tracknum={Uri.EscapeDataString(trackingNumber)}"
+                : $"https://tools.usps.com/go/TrackConfirmAction?tLabels={Uri.EscapeDataString(trackingNumber)}";
 
         var deliveryPara = estimatedDelivery.HasValue
             ? $"Estimated delivery: <strong>{estimatedDelivery.Value:MMMM d, yyyy}</strong>"
