@@ -159,7 +159,6 @@ function renderProducts() {
 
 // ── Product Detail Modal ───────────────────────────────────────────────────────
 
-// Track selected options (set of productOptionId or index for options without id)
 let pdSelectedOptions = new Set();
 let pdCurrentMode = 'quote';
 
@@ -170,7 +169,7 @@ function openProductDetail(productId) {
     pdCurrentFile = null;
     pdCurrentFileData = null;
     pdSelectedOptions = new Set();
-    pdOptionModifiers = {}; // reset add-on selections
+    pdOptionModifiers = {};
 
     const tiers = (product.priceTiers || []).slice().sort((a, b) => a.minQty - b.minQty);
     pdCurrentQty = tiers.length ? tiers[0].minQty : 1;
@@ -178,7 +177,6 @@ function openProductDetail(productId) {
     document.getElementById('pdName').textContent = product.name;
     document.getElementById('pdDesc').textContent = product.description || 'Professional printing and design service.';
 
-    // Update header price tag
     const headerPrice = document.getElementById('pdPrice');
     if (headerPrice) {
         headerPrice.textContent = tiers.length
@@ -186,11 +184,9 @@ function openProductDetail(productId) {
             : `$${product.basePrice.toFixed(2)} per unit`;
     }
 
-    // Clear the old price section — no tier table, dropdown handles it
     const priceEl = document.getElementById('pdPriceSection');
     priceEl.innerHTML = '';
 
-    // Qty control — styled custom dropdown for tiers, +/- stepper for flat
     const qtySection = document.getElementById('pdQtySection');
     if (tiers.length) {
         qtySection.innerHTML = `
@@ -221,7 +217,6 @@ function openProductDetail(productId) {
             </div>`;
     }
 
-    // Add-on options
     const optionsSection = document.getElementById('pdOptionsSection');
     const opts = product.options || [];
     if (opts.length) {
@@ -278,7 +273,7 @@ function pdGetActiveTierPrice() {
     return price;
 }
 
-let pdOptionModifiers = {}; // id → priceModifier
+let pdOptionModifiers = {};
 
 function pdToggleOption(id, modifier, checked) {
     if (checked) pdOptionModifiers[id] = modifier;
@@ -294,10 +289,8 @@ function pdUpdateTotal() {
     const addons = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
     let total;
     if (tiers.length) {
-        // Tier price is the flat batch total — addons are per-order on top
         total = pdGetActiveTierPrice() + addons;
     } else {
-        // (base + addons) × qty
         total = (pdCurrentProduct.basePrice + addons) * pdCurrentQty;
     }
     el.textContent = `$${total.toFixed(2)}`;
@@ -334,7 +327,6 @@ async function pdSubmitQuote() {
     if (!email) { showToast('Please enter your email.'); return; }
     if (!notes) { showToast('Please describe your design — this helps us prepare your quote.'); return; }
 
-    // Collect selected add-on option IDs from pdOptionModifiers
     const selectedOptionIds = Object.keys(pdOptionModifiers).map(id => ({ productOptionId: parseInt(id) }));
 
     const btn = document.getElementById('pdQuoteBtn');
@@ -369,7 +361,6 @@ async function pdSubmitQuote() {
 
         const addonTotal = Object.values(pdOptionModifiers).reduce((s, m) => s + m, 0);
         const baseTotal = pdCurrentProduct.priceTiers?.length ? pdGetActiveTierPrice() : pdCurrentProduct.basePrice * pdCurrentQty;
-        // Save to local history
         submittedQuotes.unshift({
             id: Date.now(),
             productId: pdCurrentProduct.id,
@@ -414,7 +405,6 @@ async function syncQuotesFromServer() {
         const res = await fetch(`${API_BASE}/api/Orders/user/${currentUser.id}`);
         if (!res.ok) return;
         const orders = await res.json();
-        // Rebuild submittedQuotes from real server orders (quote requests only)
         submittedQuotes = orders
             .filter(o => o.isQuoteRequest)
             .map(o => ({
@@ -430,7 +420,7 @@ async function syncQuotesFromServer() {
                 status: o.status
             }));
         saveQuotesToStorage();
-    } catch { /* silently fail — stale local data is fine as fallback */ }
+    } catch { }
     updateQuotesBadge();
 }
 
@@ -489,7 +479,7 @@ function removeQuote(id) {
     saveQuotesToStorage(); updateQuotesBadge(); renderQuotesHistory();
 }
 
-// ── Dropzone (product detail upload mode) ─────────────────────────────────────
+// ── Dropzone ──────────────────────────────────────────────────────────────────
 
 function pdHandleFileInput(input) { const file = input.files[0]; if (file) pdSetFile(file); }
 
@@ -539,8 +529,6 @@ function pdAddToCart() {
         const opt = (pdCurrentProduct.options || []).find(o => o.id == id);
         return opt ? { productOptionId: opt.id, optionName: opt.optionName, optionValue: opt.optionValue, priceModifier: mod } : null;
     }).filter(Boolean);
-    // For tiered products: cart qty = 1, basePrice = tier total (the price is for the whole batch)
-    // For flat products: cart qty = pdCurrentQty, basePrice = unit price
     const isTiered = tiers.length > 0;
     addToCart({
         productId: pdCurrentProduct.id,
@@ -579,7 +567,6 @@ function renderCart() {
         const unitPrice = item.basePrice + addonTotal;
         const lineTotal = (unitPrice * item.qty).toFixed(2);
 
-        // Option pills — only show options with a price modifier label, else just the value
         const optionPills = (item.selectedOptions || []).map(o =>
             `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:20px;padding:2px 9px;font-size:0.75rem;color:var(--accent2);font-weight:600;white-space:nowrap;">
                 ${escHtml(o.optionValue)}${o.priceModifier ? `<span style="opacity:0.7;">+$${Number(o.priceModifier).toFixed(2)}</span>` : ''}
@@ -603,20 +590,15 @@ function renderCart() {
 
         return `
             <div class="quote-item" style="padding:1rem 1rem 0.85rem;">
-                <!-- Row 1: name + remove -->
                 <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
                     <div style="font-weight:700;font-size:0.95rem;line-height:1.3;">${escHtml(item.name)}</div>
                     <button onclick="removeItem(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;line-height:1;padding:0;flex-shrink:0;margin-top:1px;" title="Remove item">✕</button>
                 </div>
-                <!-- Row 2: base price label -->
                 <div style="font-size:0.8rem;color:var(--muted);margin-bottom:${optionPills ? '8px' : '10px'};">
                     $${item.basePrice.toFixed(2)} base${addonTotal > 0 ? ` + $${addonTotal.toFixed(2)} add-ons` : ''}
                 </div>
-                <!-- Row 3: option pills (if any) -->
                 ${optionPills ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${optionPills}</div>` : ''}
-                <!-- Row 4: attached image or upload prompt -->
                 <div style="margin-bottom:10px;">${imageSection}</div>
-                <!-- Row 5: qty + line total -->
                 <div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span style="font-size:0.82rem;color:var(--muted);font-weight:500;">Qty</span>
@@ -681,10 +663,8 @@ async function openRequestModal() {
     if (currentUser) {
         document.getElementById('contactName').value = currentUser.name;
         document.getElementById('contactEmail').value = currentUser.email;
-        // Pre-fill shipping name from account name
         document.getElementById('shipName').value = currentUser.name;
     }
-    // Mirror contact name → ship name as user types
     const contactNameEl = document.getElementById('contactName');
     const shipNameEl = document.getElementById('shipName');
     contactNameEl.oninput = () => {
@@ -758,12 +738,27 @@ function closeRequestModal() {
 }
 function closeModalIfOutside(e) { }
 
+// ── SQUARE INIT ── (styles must stay here — Square iframe cannot be styled from CSS)
 async function initSquare() {
     try {
         if (!window.Square) { showToast('Payment system failed to load. Please refresh.'); return; }
         squarePayments = window.Square.payments(SQUARE_APP_ID, SQUARE_LOCATION_ID);
-        squareCard = await squarePayments.card({ style: { '.input-container': { borderRadius: '10px' }, '.input-container.is-focus': { borderColor: '#7c3aed' } } });
+        squareCard = await squarePayments.card({
+            style: {
+                '.input-container': { borderRadius: '10px' },
+                '.input-container.is-focus': { borderColor: '#7c3aed' },
+                '.message-text': { color: '#ef4444' },
+                '.message-icon': { color: '#ef4444' }
+            }
+        });
         await squareCard.attach('#square-card-container');
+        const statusEl = document.getElementById('payment-status-container');
+        squareCard.addEventListener('errorClassAdded', () => {
+            if (statusEl) { statusEl.textContent = 'Please enter a valid card number.'; statusEl.style.color = '#ef4444'; }
+        });
+        squareCard.addEventListener('errorClassRemoved', () => {
+            if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
+        });
     } catch (e) {
         document.getElementById('square-card-container').innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">Payment form failed to load.</p>';
     }
@@ -866,7 +861,7 @@ async function submitQuote() {
     }
 }
 
-// ── Payment Link Return (Quote → Pay flow) ────────────────────────────────────
+// ── Payment Link Return ────────────────────────────────────────────────────────
 
 async function checkPaymentReturn() {
     const params = new URLSearchParams(window.location.search);
@@ -881,12 +876,6 @@ async function checkPaymentReturn() {
         clearCart(); updateBadge();
         showToast(`Order placed successfully! You'll receive a confirmation email. ✓`);
         window.history.replaceState({}, document.title, window.location.pathname);
-        return;
-    }
-
-    if (params.get('proofResult') === 'invalid') {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        showToast('This proof approval link is invalid or has already been used. Please check your account for the latest status.');
         return;
     }
 
@@ -910,7 +899,6 @@ async function checkPaymentReturn() {
 
 function openProofPaymentModal(info) {
     document.getElementById('proofPayEmail').textContent = info.email;
-    // proofPayTotal removed from HTML
     const itemsEl = document.getElementById('proofPayItems');
     itemsEl.innerHTML = (info.items || []).map(i => {
         const addonTotal = (i.options || []).reduce((s, o) => s + (o.priceModifier || 0), 0);
@@ -932,13 +920,28 @@ function openProofPaymentModal(info) {
     initProofPaySquare();
 }
 
+// ── SQUARE INIT (proof pay) ── (styles must stay here — Square iframe cannot be styled from CSS)
 async function initProofPaySquare() {
     try {
         if (!window.Square) return;
         const payments = window.Square.payments(SQUARE_APP_ID, SQUARE_LOCATION_ID);
-        const card = await payments.card({ style: { '.input-container': { borderRadius: '10px' }, '.input-container.is-focus': { borderColor: '#7c3aed' } } });
+        const card = await payments.card({
+            style: {
+                '.input-container': { borderRadius: '10px' },
+                '.input-container.is-focus': { borderColor: '#7c3aed' },
+                '.message-text': { color: '#ef4444' },
+                '.message-icon': { color: '#ef4444' }
+            }
+        });
         await card.attach('#proof-pay-card-container');
         window._proofPayCard = card;
+        const proofStatusEl = document.getElementById('proof-payment-status-container');
+        card.addEventListener('errorClassAdded', () => {
+            if (proofStatusEl) { proofStatusEl.textContent = 'Please enter a valid card number.'; proofStatusEl.style.color = '#ef4444'; }
+        });
+        card.addEventListener('errorClassRemoved', () => {
+            if (proofStatusEl) { proofStatusEl.textContent = ''; proofStatusEl.style.color = ''; }
+        });
     } catch (e) {
         document.getElementById('proof-pay-card-container').innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">Payment form failed to load.</p>';
     }
@@ -997,7 +1000,7 @@ async function submitProofPayment() {
     }
 }
 
-// ── Sign In / Auth — UNIFIED ──────────────────────────────────────────────────
+// ── Sign In / Auth ────────────────────────────────────────────────────────────
 
 function openSignIn() {
     if (currentUser) { openAccount(); return; }
@@ -1026,11 +1029,6 @@ function switchToSignIn() {
     document.getElementById('createAccountForm').style.display = 'none';
 }
 
-/**
- * Unified login — works for both customers and admins.
- * The server returns { role: "Admin" | "Customer" } as part of UserDto.
- * If role is Admin, we show the admin nav button automatically.
- */
 async function handleSignIn() {
     const email = document.getElementById('signInEmail').value.trim();
     const password = document.getElementById('signInPassword').value;
@@ -1059,7 +1057,6 @@ async function handleSignIn() {
         updateNavAfterLogin();
         loadCart();
         updateBadge();
-        // Sync View Quotes panel from server orders so it survives logout/login
         await syncQuotesFromServer();
         if (isAdmin()) {
             showToast(`Welcome back, ${currentUser.name}! Admin access granted.`);
@@ -1070,7 +1067,6 @@ async function handleSignIn() {
 }
 
 async function showEmailNotConfirmedBanner(email) {
-    // Replace the sign-in form content with a clear message + resend button
     const form = document.getElementById('signInForm');
     form.innerHTML = `
         <div style="text-align:center;padding:8px 0 16px;">
@@ -1143,7 +1139,6 @@ function updateNavAfterLogin() {
     const btn = document.getElementById('authNavBtn');
     const textNode = [...btn.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
     if (textNode) textNode.textContent = ` ${currentUser.name}`;
-    // Show Admin nav button if role is Admin
     const adminBtn = document.getElementById('adminNavBtn');
     adminBtn.style.display = isAdmin() ? 'flex' : 'none';
 }
@@ -1156,7 +1151,6 @@ function loadSessionFromStorage() {
             updateNavAfterLogin();
             loadCart();
             updateBadge();
-            // Refresh quotes from server in the background on page load
             syncQuotesFromServer();
         }
     } catch { }
@@ -1187,7 +1181,6 @@ async function openAccount() {
 function closeAccount() { document.getElementById('accountModal').classList.remove('show'); document.body.style.overflow = ''; }
 function closeAccountIfOutside(e) { }
 
-// Lookup map so Review Proof button can find proof files without inline JSON
 const _accountProofFilesMap = {};
 
 function renderAccountOrders(orders) {
@@ -1231,10 +1224,10 @@ function renderAccountOrders(orders) {
     }).join('');
 }
 
-// ── Proof Review Modal ───────────────────────────────────────────────────────
+// ── Proof Review Modal ────────────────────────────────────────────────────────
 
 let proofReviewOrderId = null;
-let proofReviewToken = null; // for email-link flow
+let proofReviewToken = null;
 
 function openProofReviewModal(orderId, token) {
     closeAccount();
@@ -1296,7 +1289,6 @@ async function submitProofFeedback(action) {
         if (action === 'approve') {
             showToast('Proof approved! Check your email for the payment link. ✓');
             if (data.paymentUrl) {
-                // Redirect to payment flow
                 const params = new URLSearchParams(data.paymentUrl.replace('/?', ''));
                 const payOrder = params.get('payOrder');
                 const token = params.get('token');
@@ -1396,7 +1388,6 @@ async function adminLoadProducts() {
         const res = await fetch(`${API_BASE}/api/Products/all`, {
             headers: { 'X-User-Id': String(currentUser?.id), 'X-User-Role': currentUser?.role || '' }
         });
-        // Fall back to public endpoint if admin-specific not available
         const r = res.ok ? res : await fetch(`${API_BASE}/api/Products`);
         if (!r.ok) throw new Error();
         adminProducts = await r.json();
@@ -1736,7 +1727,6 @@ async function adminSelectOrder(id) {
                 ${(order.items || []).map(i => {
         const linePrice = i.isTiered ? i.unitPrice : i.unitPrice * i.quantity;
         const qtyLabel = i.isTiered ? `qty ${i.quantity}` : `${i.quantity}×`;
-        const optionNames = i.options?.map(o => o.optionValue).join(', ');
         const optionLines = (i.options || []).filter(o => o.priceModifier !== 0).map(o =>
             `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0 2px 12px;color:var(--muted);">
                             <span>+ ${escHtml(o.optionValue)}</span>
@@ -1920,7 +1910,6 @@ function adminRenderFiles(files) {
         return;
     }
 
-    // Group files by orderId
     const grouped = {};
     files.forEach(f => {
         const key = f.orderId ? `Order #${f.orderId}` : 'Unattached';
