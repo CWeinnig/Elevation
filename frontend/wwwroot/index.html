@@ -143,7 +143,8 @@
             <!-- Payment section (pay-now mode only) -->
             <div id="paymentSection">
                 <p class="section-label">Payment Information</p>
-                <div id="square-card-container" style="min-height:80px;margin-bottom:1rem;padding:12px;background:rgba(255,255,255,0.08);border-radius:10px;"></div>
+                <div id="square-card-container"></div>
+                <div id="payment-status-container"></div>
             </div>
 
             <button class="btn-primary" id="submitOrderBtn" onclick="submitQuote()">
@@ -153,9 +154,6 @@
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         PROOF PAYMENT MODAL (returned via payment link)
-    ════════════════════════════════════════════════════════ -->
     <!-- ═══════════════════════════════════════════════════════
          PROOF REVIEW MODAL
     ════════════════════════════════════════════════════════ -->
@@ -169,14 +167,11 @@
                 <button class="close-btn" onclick="closeProofReviewModal()">&times;</button>
             </div>
 
-            <!-- Proof file links -->
             <div id="proofReviewFiles" style="margin-bottom:1.25rem;"></div>
 
-            <!-- Comments box -->
             <p class="section-label">Comments / Feedback</p>
             <textarea id="proofReviewComments" rows="4" placeholder="Optional — describe any changes needed or reason for cancellation..." style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.9rem;resize:vertical;margin-bottom:1.25rem;"></textarea>
 
-            <!-- Actions -->
             <div style="display:flex;flex-direction:column;gap:10px;">
                 <button class="btn-primary" onclick="submitProofFeedback('approve')" style="background:linear-gradient(135deg,#10b981,#059669);">
                     Approve Proof — Proceed to Payment
@@ -192,6 +187,9 @@
         </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════
+         PROOF PAYMENT MODAL
+    ════════════════════════════════════════════════════════ -->
     <div class="modal-overlay" id="proofPayModal" onclick="if(event.target===this)closeProofPayModal()">
         <div class="modal" id="proofPayBox">
             <div class="modal-header">
@@ -220,7 +218,8 @@
             </div>
 
             <p class="section-label">Payment Information</p>
-            <div id="proof-pay-card-container" style="min-height:80px;margin-bottom:1rem;padding:12px;background:rgba(255,255,255,0.08);border-radius:10px;"></div>
+            <div id="proof-pay-card-container"></div>
+            <div id="proof-payment-status-container"></div>
             <button class="btn-primary" id="proofPayBtn" onclick="submitProofPayment()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
                 Pay Now
@@ -229,7 +228,7 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
-         SIGN IN MODAL — Unified login (no customer/admin tabs)
+         SIGN IN MODAL
     ════════════════════════════════════════════════════════ -->
     <div class="modal-overlay" id="signInModal" onclick="closeSignInIfOutside(event)">
         <div class="modal signin-modal" id="signInBox">
@@ -241,7 +240,6 @@
                 <button class="close-btn" onclick="closeSignIn()">&times;</button>
             </div>
 
-            <!-- Sign In Form -->
             <div id="signInForm">
                 <div class="form-group"><label class="form-label">Email</label><input type="email" id="signInEmail" placeholder="your@email.com" /></div>
                 <div class="form-group"><label class="form-label">Password</label><input type="password" id="signInPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleSignIn()" /></div>
@@ -249,7 +247,6 @@
                 <p class="signin-switch">Don't have an account? <a href="#" onclick="switchToCreateAccount(); return false;">Create one</a></p>
             </div>
 
-            <!-- Create Account Form -->
             <div id="createAccountForm" style="display:none;">
                 <div class="form-group"><label class="form-label">Full Name <span>*</span></label><input type="text" id="createName" placeholder="Your name" /></div>
                 <div class="form-group"><label class="form-label">Email <span>*</span></label><input type="email" id="createEmail" placeholder="your@email.com" /></div>
@@ -273,7 +270,6 @@
                 <button class="close-btn" onclick="closeAccount()">&times;</button>
             </div>
 
-            <!-- Profile -->
             <div style="margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;gap:12px;">
                 <div>
                     <div style="font-size:0.9rem;color:var(--muted);">Signed in as</div>
@@ -282,7 +278,6 @@
                 <button class="btn-ghost" onclick="signOut()" style="font-size:0.85rem;padding:6px 10px;border-radius:8px;">Sign out</button>
             </div>
 
-            <!-- Update account -->
             <details class="account-details-section">
                 <summary>Update Email or Password</summary>
                 <div style="padding:12px 0 4px;">
@@ -319,7 +314,6 @@
                     <span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#fff;font-weight:700;">Admin Dashboard</span>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <!-- Tab switcher -->
                     <div class="admin-tab-bar">
                         <button class="admin-tab active" id="adminTabProducts" onclick="switchAdminTab('products')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
@@ -342,7 +336,6 @@
             <div class="admin-body">
                 <!-- ── PRODUCTS PANE ── -->
                 <div class="admin-products-pane" id="adminProductsPane" style="display:grid;">
-                    <!-- LEFT: list -->
                     <div class="admin-list-col">
                         <div class="admin-list-header">
                             <span style="font-weight:600;font-size:0.95rem;">Products <span class="admin-count-badge" id="adminCountBadge">0</span></span>
@@ -358,7 +351,6 @@
                             <div style="padding:2rem;color:var(--muted);text-align:center;">Loading…</div>
                         </div>
                     </div>
-                    <!-- RIGHT: edit form -->
                     <div class="admin-edit-col">
                         <div class="admin-placeholder" id="adminPlaceholder">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="opacity:0.25;margin-bottom:12px;"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
@@ -384,7 +376,6 @@
                                 <div style="font-size:11px;color:var(--muted);margin-top:4px;">Shown on product card. If using tiers, set this to the lowest tier price.</div>
                             </div>
 
-                            <!-- Price Tiers -->
                             <div class="admin-field">
                                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                                     <label style="margin:0;">Price Tiers <span style="font-size:11px;font-weight:400;color:var(--muted);">(qty-based pricing)</span></label>
@@ -398,7 +389,6 @@
                                 </div>
                             </div>
 
-                            <!-- Add-On Options -->
                             <div class="admin-field">
                                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                                     <label style="margin:0;">Add-On Options <span style="font-size:11px;font-weight:400;color:var(--muted);">(checkboxes on product page)</span></label>
@@ -418,9 +408,7 @@
                 </div>
 
                 <!-- ── ORDERS PANE ── -->
-                <div class="admin-orders-pane" id="adminOrdersPane" style="display:none;flex-direction:column;">
-                    <!-- Rendered dynamically by adminRenderOrders() -->
-                </div>
+                <div class="admin-orders-pane" id="adminOrdersPane" style="display:none;flex-direction:column;"></div>
 
                 <!-- ── FILES PANE ── -->
                 <div id="adminFilesPane" style="display:none;padding:24px;overflow-y:auto;">
@@ -465,19 +453,9 @@
             </div>
             <div class="pd-body">
                 <div class="pd-desc" id="pdDesc"></div>
-
-                <!-- Price table or flat price — rendered by JS -->
                 <div id="pdPriceSection" style="margin-bottom:16px;"></div>
-
-                <!-- Qty: dropdown (tiers) or stepper (flat) — rendered by JS -->
-                <div id="pdQtySection" style="margin-bottom:16px;">
-                    <!-- populated by openProductDetail -->
-                </div>
-
-                <!-- Est. total always visible -->
+                <div id="pdQtySection" style="margin-bottom:16px;"></div>
                 <div class="pd-est-total" style="margin-bottom:16px;">Est. total: <strong id="pdEstTotal">$0.00</strong></div>
-
-                <!-- Add-on options — shown only when product has options -->
                 <div id="pdOptionsSection" style="display:none;margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:10px;"></div>
 
                 <div class="pd-section-label" style="margin-bottom:10px;">How would you like to proceed?</div>
@@ -497,7 +475,7 @@
                         <div class="pd-mode-sub">Have files ready? Upload and add directly to cart</div>
                     </button>
                 </div>
-                <!-- Quote section -->
+
                 <div id="pdQuoteSection" class="pd-panel">
                     <div class="pd-section-label" style="margin-bottom:10px;">Your Contact Info</div>
                     <div class="form-group" style="margin-bottom:0.9rem;">
@@ -521,7 +499,7 @@
                         Request Quote
                     </button>
                 </div>
-                <!-- Upload section -->
+
                 <div id="pdUploadSection" class="pd-panel" style="display:none;">
                     <div class="pd-section-label" style="margin-bottom:10px;">Your Design File</div>
                     <div class="pd-dropzone" id="pdDropzone">

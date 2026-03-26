@@ -494,7 +494,7 @@ function removeQuote(id) {
     saveQuotesToStorage(); updateQuotesBadge(); renderQuotesHistory();
 }
 
-// ── Dropzone (product detail upload mode) ─────────────────────────────────────
+// ── Dropzone ──────────────────────────────────────────────────────────────────
 
 function pdHandleFileInput(input) { const file = input.files[0]; if (file) pdSetFile(file); }
 
@@ -753,12 +753,31 @@ function closeRequestModal() {
 }
 function closeModalIfOutside(e) { }
 
+// ── SQUARE INIT ── (styles must stay here — Square iframe cannot be styled from CSS)
 async function initSquare() {
     try {
         if (!window.Square) { showToast('Payment system failed to load. Please refresh.'); return; }
         squarePayments = window.Square.payments(SQUARE_APP_ID, SQUARE_LOCATION_ID);
-        squareCard = await squarePayments.card({ style: { '.input-container': { borderRadius: '10px' }, '.input-container.is-focus': { borderColor: '#7c3aed' } } });
+        squareCard = await squarePayments.card({
+            style: {
+                '.input-container': { borderRadius: '10px' },
+                '.input-container.is-focus': { borderColor: '#7c3aed' }
+            }
+        });
         await squareCard.attach('#square-card-container');
+        const statusEl = document.getElementById('payment-status-container');
+        if (statusEl) {
+            const forceStyle = () => {
+                statusEl.style.color = '#374151';
+                statusEl.style.background = 'rgba(255,255,255,0.92)';
+                statusEl.querySelectorAll('*').forEach(el => {
+                    el.style.color = '#374151';
+                    el.style.background = 'transparent';
+                });
+            };
+            forceStyle();
+            new MutationObserver(forceStyle).observe(statusEl, { childList: true, subtree: true, characterData: true, attributes: true });
+        }
     } catch (e) {
         document.getElementById('square-card-container').innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">Payment form failed to load.</p>';
     }
@@ -861,7 +880,7 @@ async function submitQuote() {
     }
 }
 
-// ── Payment Link Return (Quote → Pay flow) ────────────────────────────────────
+// ── Payment Link Return ────────────────────────────────────────────────────────
 
 async function checkPaymentReturn() {
     const params = new URLSearchParams(window.location.search);
@@ -951,13 +970,32 @@ function openProofPaymentModal(info) {
     initProofPaySquare();
 }
 
+// ── SQUARE INIT (proof pay) ── (styles must stay here — Square iframe cannot be styled from CSS)
 async function initProofPaySquare() {
     try {
         if (!window.Square) return;
         const payments = window.Square.payments(SQUARE_APP_ID, SQUARE_LOCATION_ID);
-        const card = await payments.card({ style: { '.input-container': { borderRadius: '10px' }, '.input-container.is-focus': { borderColor: '#7c3aed' } } });
+        const card = await payments.card({
+            style: {
+                '.input-container': { borderRadius: '10px' },
+                '.input-container.is-focus': { borderColor: '#7c3aed' }
+            }
+        });
         await card.attach('#proof-pay-card-container');
         window._proofPayCard = card;
+        const proofStatusEl = document.getElementById('proof-payment-status-container');
+        if (proofStatusEl) {
+            const forceStyle = () => {
+                proofStatusEl.style.color = '#374151';
+                proofStatusEl.style.background = 'rgba(255,255,255,0.92)';
+                proofStatusEl.querySelectorAll('*').forEach(el => {
+                    el.style.color = '#374151';
+                    el.style.background = 'transparent';
+                });
+            };
+            forceStyle();
+            new MutationObserver(forceStyle).observe(proofStatusEl, { childList: true, subtree: true, characterData: true, attributes: true });
+        }
     } catch (e) {
         document.getElementById('proof-pay-card-container').innerHTML = '<p style="color:#ef4444;font-size:0.85rem;">Payment form failed to load.</p>';
     }
@@ -1041,7 +1079,7 @@ async function submitProofPayment() {
     }
 }
 
-// ── Sign In / Auth — UNIFIED ──────────────────────────────────────────────────
+// ── Sign In / Auth ────────────────────────────────────────────────────────────
 
 function openSignIn() {
     if (currentUser) { openAccount(); return; }
@@ -1305,7 +1343,7 @@ function renderAccountOrders(orders) {
     }).join('');
 }
 
-// ── Proof Review Modal ───────────────────────────────────────────────────────
+// ── Proof Review Modal ────────────────────────────────────────────────────────
 
 let proofReviewOrderId = null;
 let proofReviewToken = null;

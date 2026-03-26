@@ -347,7 +347,7 @@ input[type="password"] {
     inset: 0;
     background: rgba(0,0,0,0.45);
     z-index: 200;
-    backdrop-filter: blur(3px);
+   /* backdrop-filter: blur(3px); */
     justify-content: flex-end;
     align-items: stretch;
 }
@@ -423,8 +423,6 @@ input[type="password"] {
     color: var(--muted);
     margin-bottom: 10px;
 }
-
-
 
 .quote-item-row {
     display: flex;
@@ -718,17 +716,42 @@ input[type="password"] {
     margin-bottom: 1.2rem;
 }
 
-/* ── Square card container ── */
-#square-card-container, #proof-pay-card-container {
+/* ── Square card containers ── */
+#square-card-container,
+#proof-pay-card-container {
     min-height: 80px;
-    margin-bottom: 1rem;
+    margin-bottom: 0;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 10px;
     overflow: hidden;
 }
 
-    #square-card-container iframe, #proof-pay-card-container iframe {
+    #square-card-container iframe,
+    #proof-pay-card-container iframe {
         max-width: 100% !important;
         border-radius: 10px;
     }
+
+#payment-status-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #374151 !important;
+    padding: 0 12px;
+    min-height: 0;
+    background: transparent;
+}
+
+#payment-status-container:not(:empty) {
+    padding: 6px 12px 8px;
+}
+
+#payment-status-container * {
+    color: #374151 !important;
+}
 
 /* ── Sign In Modal ── */
 .signin-modal .modal-header {
@@ -1757,16 +1780,3 @@ input[type="password"] {
         opacity: 1;
         text-decoration: underline;
     }
-
-/* ══════════════════════════════════════════
-   ADMIN PANEL
-══════════════════════════════════════════ */
-
-.admin-panel {
-    background: var(--surface);
-    width: 100%;
-    max-width: 1100px;
-    margin: auto;
-    border-radius: 20px;
-    overflow: hidden;
-    display: flex;
